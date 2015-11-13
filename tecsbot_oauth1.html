@@ -1,0 +1,24 @@
+ <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js"></script>
+<script src="http://localhost/projects/tecsbot/twitch-js-sdk-master/twitch.min.js"></script>
+<img src="http://ttv-api.s3.amazonaws.com/assets/connect_dark.png" class="twitch-connect" href="#" />
+<script>
+$( document ).ready(function() {
+
+	  Twitch.init({clientId: ''}, function(error, status) {
+		// the sdk is now loaded
+		/*if (status.authenticated) {
+		  // Already logged in, hide button
+		  $('.twitch-connect').hide()
+		}*/
+	  });
+	  
+	$('.twitch-connect').click(function() {
+	  Twitch.login({
+		scope: ['channel_editor', 'channel_commercial', 'channel_subscriptions', 'user_subscriptions', 'channel_check_subscription','chat_login']
+	  });
+	})
+});
+</script>
+<script>
+	alert(window.location.hash);
+</script>
