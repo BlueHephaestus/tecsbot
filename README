@@ -1,0 +1,5 @@
+Tecsbot originally started out as a Twitch Emote Chat Statistics Bot, hence TECSBOT. It was just an idea I had for a bot to keep track of the number of emotes total in the given channel, however after I would have been finished with it, I decided to take it farther. It now has multiple features including autoreplies, antispam, votes, and much more. However, at the moment Tecsbot is very WIP, and it needs a lot more improvement before I will be putting it up on a server and letting other streamers use it. 
+
+At the time of this README, the bot is run in Python 2.7, using multiple libraries, with Twisted at it's core. Using the Twitch API as well as these libraries, I am working to make it the best general purpose chat and moderation bot I can make it. 
+
+I hope the code in this repository can help other bot developers get around problems they might face, as I did.
