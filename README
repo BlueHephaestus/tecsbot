@@ -3,3 +3,34 @@ Tecsbot originally started out as a Twitch Emote Chat Statistics Bot, hence TECS
 At the time of this README, the bot is run in Python 2.7, using multiple libraries, with Twisted at it's core. Using the Twitch API as well as these libraries, I am working to make it the best general purpose chat and moderation bot I can make it. 
 
 I hope the code in this repository can help other bot developers get around problems they might face, as I did.
+
+Current features (In no special order)
+
+1. Link Whitelists - !link whitelist
+2. Spam permits - !permit
+3. Antispam capabilities
+4. Ban Phrases - !banphrase
+5. Test if bot is in channel - !test
+6. Autoreplies - !autoreply
+7. Set features on or off - !set
+8. Polls - !poll 
+9. Raffles - !raffle
+10. Roulette (Russian) - !roulette
+11. Magic 8 ball - !8ball
+12. Channel statistics (Can optionally input a channel to get it's stats)
+  a. Uptime - !uptime
+  b. Chatters - !chatters
+  c. Viewers - !viewers
+  d. Views - !views
+  e. Followers - !followers
+13. Subscribers (Only for the current channel) - !subs / !subscribers
+14. Commercials  - !commercial
+15. Ban Emotes and Emote stats (Soon going to be deprecated in favor of better method):
+  a. Ban Emotes - !ban emote
+  b. Emote Stats - !stats
+16. Repeat commands / messages - !repeat
+17. Custom commands - !command
+18. Moderators (Only for the current channel atm) - !mods / !moderators
+19. Title / Status (Only streamer can edit) - !title / !status
+20. Game (Only streamer can edit) - !game
+21. Channel Topic - !topic
