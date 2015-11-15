@@ -103,33 +103,35 @@ Receiving whispers:
 	chatters viewers folllowers - specify channel, add in global capabilities
 	emote stats - yes but global or maybe channel addition as well? need to do this after we have the whole thing upgraded
 	respond to non mod commands with whispers
-
+https://apis.rtainc.co/twitchbot/status?user=Darkelement75 custom api link
+	http://deepbot.tv/wiki/Custom+Commands
+should we deprecate ban emotes if we won't be distincting between emotes and words in the stats future?
 !stats/!chanstats <channel>	
-######################33
-#future self this is wat u need to do
-respond to non mods with whispers for some commands 
-###########################
-permits:
-	if permanent replace all others for that user
-	if longer message or time replace the respective one
 add in default autoreplies and commands for examples	
 argument for mod requirement custom commands autoreplies
 	allow it for already existing commands, maybe edit in GUI
 	allow it to be input for custom and autoreply commands
 link regex #2 - inches...DansGame is not a link god dammit
-user votes then user votes number outside of index = vote erased?
-repeat add <message> <time> min/hour/messages
 name changing capabilities
 http://deepbot.deep.sg/wiki/Bot+Commands
 if topic != "":
 	whisper topic to new chatters
-	
+@customapi@[api link] where customapi is a variable that represents the data on the api link, ie how nightbot has uptime api link
 	use more try except/catch 
 just use [str(v) for v in list_thing] to remove unicode from strings<--what code was he referring to
 apparently there are a few specific characters that zalgo text needs
 we can put the large num of variables in another file and import if necessary
 oauth_on variable
-
+!time to print current time
+need to either figure out a way to whisper the /mods response or implement this when there is a new way to get the mods of a room
+dont let it time out mods unless it can send messages on behalf of streamer?
+seriously need a way to get the /mods list so that we can know if a user is a mod by the /mods list 
+	Get /mods response loudly when doing !mods
+	Get /mods silently when doing !purge and checking if is a mod
+can make it get the original followers at init and continuefrom there
+####################################################################
+#you were working on this ^ the new followers notifications
+####################################################################
 """
 '''misc
  function loadEmotes() { $.getJSON("https://api.betterttv.net/emotes").done(function(data) { $emotes.text(''); parseEmotes(data.emotes); }).fail(function() { $('#emote').text("Error loading emotes.."); }); }
@@ -434,45 +436,64 @@ def get_uptime_str(channel_parsed):
 	uptime = now_utc - created_at
 	uptime = int(uptime)
 	return parse_sec_condensed(uptime)
-
-def get_time_return_str(time_type, time_str):
-	return_str = ""
-	if time_type > 0:
-		return_str += " %s %s" % (time_type, time_str)
-		if time_type > 1:
-			return_str += "s"
-		return_str += ", "
-	else:
-		return_str = ""
-	return return_str
 	
 def parse_sec(sec):
 	#assumes that parameter is not 0
-	sec = float(sec)#just in case str is input
-	hour = int(math.floor(sec/3600))
-	minute = int(math.floor((sec - hour *3600) / 60))
-	sec = simplify_num((sec - hour *3600 - minute*60))
+	sec = float(sec)	
+	week = int(math.floor(sec/604800))
+	day = int(math.floor((sec - week*604800) / 86400))
+	hour = int(math.floor((sec - week*604800 - day*86400)/ 3600))#day = 5
+	minute = int(math.floor((sec - week*604800 - day*86400 - hour *3600) / 60))
+	sec = simplify_num((sec - week*604800 - day*86400 - hour *3600 - minute*60))
 	
-	return_str = get_time_return_str(hour, "hour")
-	return_str += get_time_return_str(minute, "minute")
-	return_str += get_time_return_str(sec, "second")
+	time_values = [week, 'weeks', 'week', day, 'days', 'day', hour, 'hours', 'hour', minute, 'minutes', 'minute', sec, 'seconds', 'second']
+	return_str = ''
+	
+	for time_unit_index, time_unit_value in enumerate(time_values):#every third
+		if is_num(time_unit_value):
+			if time_unit_value != 0:
+				if time_values[time_unit_index+1] == "weeks" or time_values[time_unit_index+1] == "days":
+					if time_unit_value == 1:
+						return_str += "%s %s, " % (time_unit_value, time_values[time_unit_index+2])
+					else:
+						return_str += "%s %s, " % (time_unit_value, time_values[time_unit_index+1])
+				else:
+					if time_unit_value == 1:
+						return_str += "%s %s, " % (time_unit_value, time_values[time_unit_index+2])
+					else:
+						return_str += "%s %s, " % (time_unit_value, time_values[time_unit_index+1])
+					
+	
 	if return_str.endswith(", "):
 		return_str = return_str[:-2]
 	return return_str
 
 def parse_sec_condensed(sec):
 	sec = float(sec)
-	hour = int(math.floor(sec/3600))
-	minute = int(math.floor((sec - hour *3600) / 60))
-	sec = simplify_num((sec - hour *3600 - minute*60))
-	if hour == 0 and minute == 0:
-		return_str = "%ss" % (sec)
-	elif hour == 0:
-		return_str = "%sm %ss" % (minute, sec)
-	else:
-		return_str = "%sh %sm %ss" % (hour, minute, sec)	
-	#return the string for sending
-	return return_str
+	
+	week = int(math.floor(sec/604800))
+	day = int(math.floor((sec - week*604800) / 86400))
+	hour = int(math.floor((sec - week*604800 - day*86400)/ 3600))#day = 5
+	minute = int(math.floor((sec - week*604800 - day*86400 - hour *3600) / 60))
+	sec = simplify_num((sec - week*604800 - day*86400 - hour *3600 - minute*60))
+	
+	time_values = [week, 'weeks', 'week', day, 'days', 'day', hour, 'h', 'h', minute, 'm', 'm', sec, 's', 's']
+	return_str = ''
+	
+	for time_unit_index, time_unit_value in enumerate(time_values):#every third
+		if is_num(time_unit_value):
+			if time_unit_value != 0:
+				if time_values[time_unit_index+1] == "weeks" or time_values[time_unit_index+1] == "days":
+					if time_unit_value == 1:
+						return_str += "%s %s " % (time_unit_value, time_values[time_unit_index+2])
+					else:
+						return_str += "%s %s " % (time_unit_value, time_values[time_unit_index+1])
+				else:
+					if time_unit_value == 1:
+						return_str += "%s%s " % (time_unit_value, time_values[time_unit_index+2])
+					else:
+						return_str += "%s%s " % (time_unit_value, time_values[time_unit_index+1])
+	return return_str.rstrip()	
 	
 def is_mod(user, channel_parsed, user_type):
 	'''
@@ -522,9 +543,16 @@ def create_viewer_arr(channel_parsed):
 	viewer_arr.extend(viewers)
 	return viewer_arr
 	
-def new_follower(follower_arr, channel_parsed, self):
+def get_new_followers(follower_arr, channel_parsed, self):
 	follows_json = get_json_follows(channel_parsed)
-	#need to return follower if there are any, and false if not
+	new_follower_arr = []
+	
+	for follower in follows_json["follows"]:
+		if follower not in follower_arr:
+			follower_arr.append(follower)
+			new_follower_arr.append(follower)
+	return follower_arr, new_follower_arr	
+	'''#need to return follower if there are any, and false if not
 	if len(follows_json["follows"]) > 0:
 		if follows_json["follows"][0]["user"]["display_name"] not in follower_arr:
 			#if the first is not already recorded, then new follower
@@ -537,7 +565,7 @@ def new_follower(follower_arr, channel_parsed, self):
 				follower_arr.append(follower["user"]["display_name"])
 		return follower_arr
 	else:
-		return False
+		return False'''
 
 def timeout_thread(self, send_str):
 	time.sleep(2)
@@ -752,7 +780,45 @@ def prettify_num(num):
 		return "".join(list(reversed(num)))#converts from reversed list into int
 	else:
 		return num
-		
+
+def convert_to_sec(time, unit, self):
+	if unit in self.time_unit_arr[:4]:#secs
+		return time
+	elif unit in self.time_unit_arr[4:8]:#mins
+		return time*60
+	elif unit in self.time_unit_arr[8:12]:#hours
+		return time*3600
+	elif unit in self.time_unit_arr[12:14]:#days
+		return time*86400
+	elif unit in self.time_unit_arr[14:16]:#weeks
+		return time*604800
+
+def trim_permit_arr(permit_arr, permit_high_user, permit_high_type, permit_high_duration):
+	if permit_high_type == "permanent":
+		for permit_pair_index, permit_pair in enumerate(permit_arr):
+			if permit_pair[1] == permit_high_user:
+				del permit_arr[permit_pair_index]
+	else:
+		for permit_pair_index, permit_pair in enumerate(permit_arr):
+			permit_user = permit_pair[1]
+			permit_type = permit_pair[3]
+			permit_duration = permit_pair[2]
+			if permit_pair_index != len(permit_arr) -1 and permit_user == permit_high_user:
+				if permit_type == "permanent":#remove ours because it's fucking permanent
+					#remove the original element, that is last in the array
+					del permit_arr[len(permit_arr)-1]
+					break
+				elif permit_type == permit_high_type:#if not the current one and the user and type are the same
+					if permit_duration <= permit_high_duration:
+						#remove this element
+						del permit_arr[permit_pair_index]
+						break
+					else:
+						#remove the original element, that is last in the array
+						del permit_arr[len(permit_arr)-1]
+						break
+	return permit_arr		
+	
 class TwitchBot(irc.IRCClient, object):
 
 	def __init__(self, channel):#for now only channel
@@ -849,11 +915,15 @@ class TwitchBot(irc.IRCClient, object):
 		
 		self.rol_chance = .5
 		self.rol_timeout = 5 #seconds
-
+		
+		self.purge_duration = 5
+		self.last_chatter_check_time = 0
+		self.last_follow_check_time = 0
+		
 		self.default_permit_time = 30#seconds
 		self.default_permit_msg_count = 10#msgs
 		self.ball_arr = ["It is certain", "It is decidedly so", "Without a doubt", "Yes, definitely", "You may rely on it", "As I see it, yes", "Most likely", "Outlook good", "Yes", "Signs point to yes", "Reply hazy try again", "Ask again later", "Better not tell you now", "Cannot predict now", "Concentrate and ask again", "Don't count on it", "My reply is no", "My sources say no", "Outlook not so good", "Very doubtful"]
-		
+		self.time_unit_arr = ["sec", "secs", "second", "seconds", "min", "mins", "minute", "minutes", "hr", "hrs", "hour", "hours", "day", "days", "week", "weeks"]
 		self.emote_arr = get_emote_list(self.channel_parsed)
 		self.special_emote_arr = ['o_O', 'O_o', 'o_o', 'O_O', ':o', ':O', ':\\', ':/', ':p', ':P', ';p', ';P']
 		#self.emote_arr.extend(self.special_emote_arr)
@@ -875,6 +945,10 @@ class TwitchBot(irc.IRCClient, object):
 		#if this one fails, try this one, i'm pretty sure it's actually better 
 		#(?![\d\.]\b)(\S+\.[^\d]{2,6})\b
 		check_loop = LoopingCall(self.repeat_check)
+		check_loop.start(0.003)
+		#check_loop = LoopingCall(self.chatter_check)
+		#check_loop.start(0.003)
+		check_loop = LoopingCall(self.follower_check)
 		check_loop.start(0.003)
 	
 	def link_whitelist_parse(self, user, msg, channel_parsed, user_type):
@@ -1006,6 +1080,7 @@ class TwitchBot(irc.IRCClient, object):
 								permit_type = "time"
 								permit_pair = [current_time, permit_user, permit_time, permit_type]
 								self.permit_arr.append(permit_pair)
+								self.permit_arr = trim_permit_arr(self.permit_arr, permit_user, permit_type, permit_time)
 								send_str = "%s's spam filter has been lifted for %s." % (permit_user, parse_sec_condensed(permit_time))
 							elif len(msg_arr) == 4:
 								if msg_arr[3] == "time":
@@ -1015,6 +1090,7 @@ class TwitchBot(irc.IRCClient, object):
 									permit_type = "time"
 									permit_pair = [current_time, permit_user, permit_time, permit_type]
 									self.permit_arr.append(permit_pair)
+									self.permit_arr = trim_permit_arr(self.permit_arr, permit_user, permit_type, permit_time)
 									send_str = "%s's spam filter has been lifted for %s." % (permit_user, parse_sec_condensed(permit_time))
 								elif msg_arr[3] == "message":
 									#!permit add <user> message
@@ -1022,12 +1098,14 @@ class TwitchBot(irc.IRCClient, object):
 									permit_type = "message"
 									permit_pair = [0, permit_user, msg_count, permit_type]#0 = current msg count
 									self.permit_arr.append(permit_pair)
+									self.permit_arr = trim_permit_arr(self.permit_arr, permit_user, permit_type, msg_count)
 									send_str = "%s's spam filter has been lifted for %s messages." % (permit_user, msg_count)
 								elif msg_arr[3] == "permanent":
 									#!permit add <user> permanent
 									permit_type = "permanent"
 									permit_pair = [0, permit_user, 0, permit_type]#0 = current msg count
 									self.permit_arr.append(permit_pair)
+									self.permit_arr = trim_permit_arr(self.permit_arr, permit_user, permit_type, 0)
 									send_str = "%s's spam filter has been permanently lifted." % (permit_user)
 								elif is_num(msg_arr[3]):
 									#!permit add <user> <time duration>
@@ -1036,9 +1114,10 @@ class TwitchBot(irc.IRCClient, object):
 									permit_type = "time"
 									permit_pair = [current_time, permit_user, permit_time, permit_type]
 									self.permit_arr.append(permit_pair)
+									self.permit_arr = trim_permit_arr(self.permit_arr, permit_user, permit_type, permit_time)
 									send_str = "%s's spam filter has been lifted for %s." % (permit_user, parse_sec_condensed(permit_time))
 								else:
-									send_str = "Usage: !permit add <user> message/time <message count/time duration>/permanent" 
+									send_str = "Usage: !permit add <user> message/time/<time> <message count/time duration/time unit>/permanent" 
 									whisper(user, send_str)
 									return	
 							elif len(msg_arr) == 5:
@@ -1050,9 +1129,12 @@ class TwitchBot(irc.IRCClient, object):
 										permit_type = "time"
 										permit_pair = [current_time, permit_user, permit_time, permit_type]
 										self.permit_arr.append(permit_pair)
+										self.permit_arr = trim_permit_arr(self.permit_arr, permit_user, permit_type, permit_time)
 										send_str = "%s's spam filter has been lifted for %s." % (permit_user, parse_sec_condensed(permit_time))
 									else:
-										send_str = "Usage: !permit add <user> message/time <message count/time duration>/permanent" 
+										send_str = "Usage: !permit add <user> message/time/<time> <message count/time duration/time unit>/permanent" 
+										whisper(user, send_str)
+										return
 								elif msg_arr[3] == "message":
 									if is_num(msg_arr[4]):
 										#!permit add <user> <type> <message count>
@@ -1060,25 +1142,54 @@ class TwitchBot(irc.IRCClient, object):
 										permit_type = "message"
 										permit_pair = [0, permit_user, msg_count, permit_type]#0 = current msg count
 										self.permit_arr.append(permit_pair)
+										self.permit_arr = trim_permit_arr(self.permit_arr, permit_user, permit_type, msg_count)
 										send_str = "%s's spam filter has been lifted for %s messages." % (permit_user, msg_count)
 									else:
-										send_str = "Usage: !permit add <user> message/time <message count/time duration>/permanent" 
+										send_str = "Usage: !permit add <user> message/time/<time> <message count/time duration/time unit>/permanent" 
 										whisper(user, send_str)
 										return
+								elif is_num(msg_arr[3]):
+									if msg_arr[4] in self.time_unit_arr:
+										#!permit add <user> <time> <time unit>
+										current_time = time.time()
+										permit_time = simplify_num(msg_arr[3])
+										permit_time_unit = msg_arr[4]
+										permit_time = convert_to_sec(permit_time, permit_time_unit, self)
+										permit_type = "time"
+										permit_pair = [current_time, permit_user, permit_time, permit_type]
+										self.permit_arr.append(permit_pair)
+										self.permit_arr = trim_permit_arr(self.permit_arr, permit_user, permit_type, permit_time)
+										send_str = "%s's spam filter has been lifted for %s." % (permit_user, parse_sec_condensed(permit_time))
+									else:
+										send_str = "Usage: !permit add <user> message/time/<time> <message count/time duration/time unit>/permanent" 
+										whisper(user, send_str)
+										return
+							elif len(msg_arr) == 6:
+								if msg_arr[3] == "time" and is_num(msg_arr[4]) and msg_arr[5] in self.time_unit_arr:
+									#!permit add <user> time <time> <time unit>
+									current_time = time.time()
+									permit_time = simplify_num(msg_arr[4])
+									permit_time_unit = msg_arr[5]
+									permit_time = convert_to_sec(permit_time, permit_time_unit, self)
+									permit_type = "time"
+									permit_pair = [current_time, permit_user, permit_time, permit_type]
+									self.permit_arr.append(permit_pair)
+									self.permit_arr = trim_permit_arr(self.permit_arr, permit_user, permit_type, permit_time)
+									send_str = "%s's spam filter has been lifted for %s." % (permit_user, parse_sec_condensed(permit_time))
 								else:
-									send_str = "Usage: !permit add <user> message/time <message count/time duration>/permanent" 
+									send_str = "Usage: !permit add <user> message/time/<time> <message count/time duration/time unit>/permanent" 
 									whisper(user, send_str)
 									return
 							else:
-								send_str = "Usage: !permit add <user> message/time <message count/time duration>/permanent" 
+								send_str = "Usage: !permit add <user> message/time/<time> <message count/time duration/time unit>/permanent" 
 								whisper(user, send_str)
 								return
 						else:
-							send_str = "Usage: !permit add <user> message/time <message count/time duration>/permanent" 
+							send_str = "Usage: !permit add <user> message/time/<time> <message count/time duration/time unit>/permanent" 
 							whisper(user, send_str)
 							return
 					else:
-						send_str = "Usage: !permit add <user> message/time <message count/time duration>/permanent" 
+						send_str = "Usage: !permit add <user> message/time/<time> <message count/time duration/time unit>/permanent" 
 						whisper(user, send_str)
 						return
 							
@@ -1163,6 +1274,7 @@ class TwitchBot(irc.IRCClient, object):
 							permit_type = "time"
 							permit_pair = [current_time, permit_user, permit_time, permit_type]
 							self.permit_arr.append(permit_pair)
+							self.permit_arr = trim_permit_arr(self.permit_arr, permit_user, permit_type, permit_time)
 							send_str = "%s's spam filter has been lifted for %s." % (permit_user, parse_sec_condensed(permit_time))
 						elif len(msg_arr) == 3:
 							if msg_arr[2] == "time":
@@ -1172,6 +1284,7 @@ class TwitchBot(irc.IRCClient, object):
 								permit_type = "time"
 								permit_pair = [current_time, permit_user, permit_time, permit_type]
 								self.permit_arr.append(permit_pair)
+								self.permit_arr = trim_permit_arr(self.permit_arr, permit_user, permit_type, permit_time)
 								send_str = "%s's spam filter has been lifted for %s." % (permit_user, parse_sec_condensed(permit_time))
 							elif msg_arr[2] == "message":
 								#!permit <user> message
@@ -1179,12 +1292,14 @@ class TwitchBot(irc.IRCClient, object):
 								permit_type = "message"
 								permit_pair = [0, permit_user, msg_count, permit_type]#0 = current msg count
 								self.permit_arr.append(permit_pair)
+								self.permit_arr = trim_permit_arr(self.permit_arr, permit_user, permit_type, msg_count)
 								send_str = "%s's spam filter has been lifted for %s messages." % (permit_user, msg_count)
 							elif msg_arr[2] == "permanent":
 								#!permit <user> permanent
 								permit_type = "permanent"
 								permit_pair = [0, permit_user, 0, permit_type]#0 = current msg count
 								self.permit_arr.append(permit_pair)
+								self.permit_arr = trim_permit_arr(self.permit_arr, permit_user, permit_type, 0)
 								send_str = "%s's spam filter has been permanently lifted." % (permit_user)
 							elif is_num(msg_arr[2]):
 								#!permit <user> <time duration>
@@ -1193,6 +1308,7 @@ class TwitchBot(irc.IRCClient, object):
 								permit_type = "time"
 								permit_pair = [current_time, permit_user, permit_time, permit_type]
 								self.permit_arr.append(permit_pair)
+								self.permit_arr = trim_permit_arr(self.permit_arr, permit_user, permit_type, permit_time)
 								send_str = "%s's spam filter has been lifted for %s." % (permit_user, parse_sec_condensed(permit_time))
 							else:
 								send_str = "Usage: !permit <user> message/time <message count/time duration>" 
@@ -1201,12 +1317,13 @@ class TwitchBot(irc.IRCClient, object):
 						elif len(msg_arr) == 4:
 							if msg_arr[2] == "time":
 								if is_num(msg_arr[3]):
-									#!permit add <user> <type> <time duration>
+									#!permit <user> <type> <time duration>
 									current_time = time.time()
 									permit_time = simplify_num(msg_arr[3])
 									permit_type = "time"
 									permit_pair = [current_time, permit_user, permit_time, permit_type]
 									self.permit_arr.append(permit_pair)
+									self.permit_arr = trim_permit_arr(self.permit_arr, permit_user, permit_type, permit_time)
 									send_str = "%s's spam filter has been lifted for %s." % (permit_user, parse_sec_condensed(permit_time))
 								else:
 									send_str = "Usage: !permit <user> message/time <message count/time duration>" 
@@ -1214,19 +1331,52 @@ class TwitchBot(irc.IRCClient, object):
 									return
 							elif msg_arr[2] == "message":
 								if is_num(msg_arr[3]):
-									#!permit add <user> <type> <message count>
+									#!permit <user> <type> <message count>
 									
 									msg_count = simplify_num(msg_arr[3])
 									permit_type = "message"
 									permit_pair = [0, permit_user, msg_count, permit_type]#0 = current msg count
 									self.permit_arr.append(permit_pair)
+									self.permit_arr = trim_permit_arr(self.permit_arr, permit_user, permit_type, msg_count)
 									send_str = "%s's spam filter has been lifted for %s messages." % (permit_user, msg_count)
 								else:
 									send_str = "Usage: !permit <user> message/time <message count/time duration>/permanent" 
 									whisper(user, send_str)
 									return
+							elif is_num(msg_arr[2]):
+								if msg_arr[3] in self.time_unit_arr:
+									#!permit <user> <time> <time unit>
+									current_time = time.time()
+									permit_time = simplify_num(msg_arr[2])
+									permit_time_unit = msg_arr[3]
+									permit_time = convert_to_sec(permit_time, permit_time_unit, self)
+									permit_type = "time"
+									permit_pair = [current_time, permit_user, permit_time, permit_type]
+									self.permit_arr.append(permit_pair)
+									self.permit_arr = trim_permit_arr(self.permit_arr, permit_user, permit_type, permit_time)
+									send_str = "%s's spam filter has been lifted for %s." % (permit_user, parse_sec_condensed(permit_time))
+								else:
+									send_str = "Usage: !permit <user> message/time/<time> <message count/time duration/time unit>/permanent" 
+									whisper(user, send_str)
+									return
 							else:
 								send_str = "Usage: !permit <user> message/time <message count/time duration>/permanent" 
+								whisper(user, send_str)
+								return
+						elif len(msg_arr) == 5:
+							if msg_arr[2] == "time" and is_num(msg_arr[3]) and msg_arr[4] in self.time_unit_arr:
+								#!permit <user> time <time> <time unit>
+								current_time = time.time()
+								permit_time = simplify_num(msg_arr[3])
+								permit_time_unit = msg_arr[4]
+								permit_time = convert_to_sec(permit_time, permit_time_unit, self)
+								permit_type = "time"
+								permit_pair = [current_time, permit_user, permit_time, permit_type]
+								self.permit_arr.append(permit_pair)
+								self.permit_arr = trim_permit_arr(self.permit_arr, permit_user, permit_type, permit_time)
+								send_str = "%s's spam filter has been lifted for %s." % (permit_user, parse_sec_condensed(permit_time))
+							else:
+								send_str = "Usage: !permit <user> message/time/<time> <message count/time duration/time unit>/permanent" 
 								whisper(user, send_str)
 								return
 						else:
@@ -1244,6 +1394,8 @@ class TwitchBot(irc.IRCClient, object):
 						send_str = "You have to be a mod to use !permit commands" 
 					whisper(user, send_str)
 					return
+				
+								
 			else:
 				send_str = "You have to be a mod to use !permit commands." 
 				whisper(user, send_str)
@@ -1872,15 +2024,18 @@ class TwitchBot(irc.IRCClient, object):
 				else:
 					#usage
 					send_str = "Usage: \"!set <feature> on/off \"." 
-					self.write(send_str)
+					whisper(user, send_str)
+					return
 				#just set_str, explain usage.
 				if set_str == msg:
 					send_str = "Turn features on or off. Usage: \"!set <feature> on/off \"." 
-					self.write(send_str)
+					whisper(user, send_str)
+					return
 			else:
 				#not mod
 				send_str = "You have to be a mod to use !set commands." 
-				self.write(send_str)
+				whisper(user, send_str)
+				return
 		else:
 			return False
 	
@@ -1900,9 +2055,7 @@ class TwitchBot(irc.IRCClient, object):
 		msg_arr = msg.split(" ", 2)
 		#save us from going into the loop if the vote is off and the command is not !vote start, done by a mod
 		if in_front(vote_str, msg) and is_mod(user, self.channel_parsed, user_type) and self.vote_on == False:
-			if in_front(poll_start_str, msg):
-				pass
-			else:
+			if not in_front(poll_start_str, msg):
 				send_str = "There are no ongoing votes." 
 				self.write(send_str)
 				return
@@ -1947,6 +2100,8 @@ class TwitchBot(irc.IRCClient, object):
 							return
 					else:
 						send_str = "Usage: !poll start <option1, option2, ...>" 
+						whisper(user, send_str)
+						return
 				elif in_front(poll_options_str, msg):
 					if len(msg_arr) == 2:
 						if self.vote_on:
@@ -1960,12 +2115,11 @@ class TwitchBot(irc.IRCClient, object):
 							send_str = "No votes to display."
 					else:
 						send_str = "Usage !poll options"
-						
-					if is_mod(user, self.channel_parsed, user_type):
-						self.write(send_str)
-					else:
 						whisper(user, send_str)
-					return
+						return
+					if not is_mod(user, self.channel_parsed, user_type):
+						whisper(user, send_str)		
+						return
 				elif in_front(poll_reset_str, msg):
 					if is_mod(user, self.channel_parsed, user_type):
 						for pair in self.vote_arr:
@@ -2025,21 +2179,21 @@ class TwitchBot(irc.IRCClient, object):
 					else:
 						send_str = "There are no ongoing polls." 
 						
-					if is_mod(user, self.channel_parsed, user_type):
-						self.write(send_str)
-					else:
-						whisper(user, send_str)
-					return
+					if not is_mod(user, self.channel_parsed, user_type):
+						whisper(user, send_str)		
+						return
 				elif in_front(vote_remove_str, msg):
 					for vote_option_index, vote_option in enumerate(self.vote_arr):
 						if user in vote_option[2]:
 							vote_option[2].remove(user)
 							vote_option[1]-=1
 							self.vote_total -=1
+							send_str = "Vote removed."
+							whisper(user, send_str)
 							break
 					else:
-						#whisper this in future, for now do nothing
-						pass
+						send_str = "You have not yet voted for an option."
+						whisper(user, send_str)
 					return						
 				elif in_front(poll_end_str, msg) or in_front(poll_close_str, msg):
 					#close the vote
@@ -2115,11 +2269,12 @@ class TwitchBot(irc.IRCClient, object):
 										else:
 											send_str = "Vote added."
 											whisper(user, send_str)
+										return
 									elif user in vote_option[2]:
 										send_str = "You have already voted for that option"
 										whisper(user, send_str)
-										break#save some time, end this loop if they are already in the option they selected
-									break
+										return#save some time, end this loop if they are already in the option they selected
+									break#this actually shouldn't be possible
 							else:
 								send_str = "Invalid vote option"
 								whisper(user, send_str)
@@ -2141,27 +2296,42 @@ class TwitchBot(irc.IRCClient, object):
 												self.vote_arr[old_vote_option_index][2].remove(user)
 												self.vote_arr[old_vote_option_index][1] -= 1
 												self.vote_total-=1
+												send_str = "Vote changed."
+												whisper(user, send_str)
 												break
+										else:
+											send_str = "Vote added."
+											whisper(user, send_str)
+										return
 									elif user in vote_option[2]:
-										break#save some time, end this loop if they are already in the option they selected
-											
+										send_str = "You have already voted for that option"
+										whisper(user, send_str)
+										return#save some time, end this loop if they are already in the option they selected
+									break#also shouldnt be kimpossible		
 							return [self.vote_option_arr, self.vote_arr, self.vote_total]
 						else:
 							send_str = "Invalid index for vote choice."
+							whisper(user, send_str)
+							return
 					else:
 						if is_mod(user, self.channel_parsed, user_type):
 							send_str = "Usage: !poll start/stats/reset/end/close" 
 							
 						else:
 							send_str = "Usage: !vote <option/index>"
-				
+						whisper(user, send_str)
+						return
 			else:
 				if is_mod(user, self.channel_parsed, user_type):
 					send_str = "Usage: !poll start/reset/stats/end/close" 
 				else:
 					send_str = "Usage: !vote <option/index>"
+				whisper(user, send_str)
+				return
 		elif vote_str == msg:
 			send_str = "Usage: !vote <option/index>"
+			whisper(user, send_str)
+			return
 		else:
 			return False
 		self.write(send_str)
@@ -2178,12 +2348,16 @@ class TwitchBot(irc.IRCClient, object):
 				#avoid duplicates
 				if raffle_str == msg and user not in self.raffle_users:
 					self.raffle_users.append(user)
-				
+					send_str = "You have been added to the raffle."
+					whisper(user, send_str)
+					return
 				elif start_raffle_str == msg:
 					if is_mod(user, self.channel_parsed, user_type):
 						send_str = "There is already an ongoing raffle." 
 					else:
 						send_str = "Only mods can start raffles." 
+						whisper(user, send_str)
+						return
 					self.write(send_str)
 					
 				elif end_raffle_str == msg:
@@ -2199,6 +2373,8 @@ class TwitchBot(irc.IRCClient, object):
 						
 					else:
 						send_str = "Only mods can end raffles." 
+						whisper(user, send_str)
+						return
 					self.write(send_str)
 			else:
 				if start_raffle_str == msg:
@@ -2207,16 +2383,21 @@ class TwitchBot(irc.IRCClient, object):
 						send_str = "Raffle started. Join the raffle with \"!raffle\"." % ()
 					else:
 						send_str = "Only mods can start raffles." 
+						whisper(user, send_str)
+						return
 					self.write(send_str)
 				elif raffle_str == msg and is_mod(user, self.channel_parsed, user_type):
 					send_str = "Usage: !raffle start/end" 
-					self.write(send_str)
+					whisper(user, send_str)
+					return
 				elif end_raffle_str == msg:
 					if is_mod(user, self.channel_parsed, user_type):
-						send_str = "No ongoing raffles." 
+						send_str = "No ongoing raffles."
+						self.write(send_str)	
 					else:
 						send_str = "Only mods can end raffles." 
-					self.write(send_str)	
+						whisper(user, send_str)
+						return
 					
 		else:
 			return False
@@ -2263,13 +2444,18 @@ class TwitchBot(irc.IRCClient, object):
 								send_str = "Roulette chance successfully changed to %s%%" % (input_perc)
 						else:
 							send_str = "Usage: !roulette chance <percent chance>" 
+							whisper(user, send_str)
+							return
 					else:
 						send_str = "Only mods can change the chance of the roulette." 
+						whisper(user, send_str)
+						return
 					self.write(send_str)
 				else:
 					if is_mod(user, self.channel_parsed, user_type):
 						send_str = "Usage: !roulette chance <percent chance>" 
-						self.write(send_str)
+						whisper(user, send_str)
+						return
 			else:
 				return False
 	
@@ -2277,14 +2463,18 @@ class TwitchBot(irc.IRCClient, object):
 		#8ball
 		#adding in deleting/adding/clearing of values
 		ball_str = "!8ball"
+		ball_add_str = "!8ball add"
+		ball_del_str = "!8ball delete"
+		ball_rem_str = "!8ball remove"
+		ball_list_str = "!8ball list"
+		ball_clr_str = "!8ball clear"
 		
 		#move this up a level when we allow editing of these values		
 		if self.ball_on:
 			if in_front(ball_str, msg):
-				if is_mod(user, self.channel_parsed, user_type):
-					msg_arr = msg.split(" ", 2)
-					if in_front(ball_add_str, msg):
-						#if is_mod(user, self.channel_parsed, user_type):
+				msg_arr = msg.split(" ", 2)
+				if in_front(ball_add_str, msg):
+					if is_mod(user, self.channel_parsed, user_type):
 						if len(msg_arr) > 2:#need to have this if statement more often
 							ball_response = msg_arr[2]
 							if ball_response not in self.ball_arr:
@@ -2295,8 +2485,12 @@ class TwitchBot(irc.IRCClient, object):
 						else:
 							send_str = "Usage: \"!8ball add <8ball response>\"" 
 						self.write(send_str)
-						return
-					elif in_front(ball_del_str, msg) or in_front(ball_rem_str, msg):
+					else:
+						send_str = "You have to be a mod to use \"!8ball add\"."
+						whisper(user, send_str)
+					return
+				elif in_front(ball_del_str, msg) or in_front(ball_rem_str, msg):
+					if is_mod(user, channel_parsed, user_type):
 						if len(msg_arr) > 2:
 							ball_response = msg_arr[2]
 							if is_num(ball_response):
@@ -2316,8 +2510,12 @@ class TwitchBot(irc.IRCClient, object):
 						else:
 							send_str = "Usage: \"!8ball delete/remove <8ball response/index>\"" 
 						self.write(send_str)
-						return
-					elif in_front(ball_list_str, msg):
+					else:
+						send_str = "You have to be a mod to use \"!8ball delete/remove\"."
+						whisper(user, send_str)
+					return
+				elif in_front(ball_list_str, msg):
+					if is_mod(user, channel_parsed, user_type):
 						if len(self.ball_arr) > 0:
 							send_str = "Current 8ball responses: " 
 							for ball_response in range(len(self.ball_arr)):
@@ -2332,20 +2530,33 @@ class TwitchBot(irc.IRCClient, object):
 						else:
 							send_str = "There are currently no 8ball responses." 
 							self.write(send_str)
-						return
-					elif ball_clr_str == msg:
+					else:
+						send_str = "You have to be a mod to use \"!8ball clear\"."
+						whisper(user, send_str)
+					return
+				elif ball_clr_str == msg:
+					if is_mod(user, self.channel_parsed, user_type): 
 						if len(self.ball_arr) > 0:
 							self.ball_arr = []
 							send_str = "All 8ball responses removed." 
 						else:	
 							send_str = "There are currently no 8ball responses." 
 						self.write(send_str)
+					else:
+						send_str = "You have to be a mod to use \"!8ball clear\"."
+						whisper(user, send_str)
 						return
-					elif ball_str == msg and is_mod(user, self.channel_parsed, user_type):
+					return
+				elif ball_str == msg:
+					if is_mod(user, self.channel_parsed, user_type):
 						send_str = "Usage: \"!8ball add/delete/remove/list/clear/<question>\"" 
-						self.write(send_str)
-						return
-				else:
+						whisper(user, send_str)
+					else:
+						send_str = "You have to be a mod to use \"!8ball clear\"."
+						whisper(user, send_str)
+					return
+						
+				else:#so we don't respond when using the 8ball commands
 					if "?" in msg: #and msg.rstrip().endswith("?") <-- is this better?
 						msg_arr = msg.split(" ", 1)
 						if len(msg_arr) == 2:
@@ -2355,12 +2566,20 @@ class TwitchBot(irc.IRCClient, object):
 								send_str = "Magic 8 ball says... %s" % (ball_response)
 							else:
 								send_str = "There are currently no 8ball responses." 
+								whisper(user, send_str)
+								return
 						elif ball_str == msg:
-							send_str = "Get the Magic 8 Ball to answer your question. Usage: \"!8ball <question> \"." 
+							send_str = "Get the Magic 8 Ball to answer your question. Usage: \"!8ball <question> \"."
+							whisper(user, send_str)
+							return
 						else:
 							send_str = "Usage: \"!8ball <question>? \"." 
+							whisper(user, send_str)
+							return
 					else:
 						send_str = "Usage: \"!8ball <question>? \"." 
+						whisper(user, send_str)
+						return
 					self.write(send_str)
 			else:
 				return False
@@ -2368,7 +2587,7 @@ class TwitchBot(irc.IRCClient, object):
 			return False
 	
 	def uptime_parse(self, user, msg, channel_parsed, user_type):
-		#uptime
+		#uptime - leaving this to print to everyone for now
 		uptime_str = "!uptime"
 		if in_front(uptime_str, msg):
 			msg_arr = msg.split(" ")
@@ -2451,127 +2670,6 @@ class TwitchBot(irc.IRCClient, object):
 		else:
 			return False
 	
-	def chatters_parse(self, user, msg, channel_parsed, user_type):
-		#chatters
-		chatters_str = "!chatters"
-		if in_front(chatters_str, msg):
-			msg_arr = msg.split()
-			if len(msg_arr) == 1:
-				chatter_data = get_json_chatters(channel_parsed)
-				chatter_count = chatter_data["chatter_count"]
-				send_str = "There are currently %s accounts in chat." % (chatter_count)
-			elif len(msg_arr) > 1:
-				chatter_channel = msg_arr[1]
-				chatter_data = get_json_chatters(chatter_channel.lower())
-				chatter_count = chatter_data["chatter_count"]
-				if chatter_count:
-					chatter_count = prettify_num(chatter_count)
-					if chatter_channel.rstrip().endswith("s"):
-						send_str = "There are currently %s accounts in %s' chat." % (chatter_count, chatter_channel)
-					else:
-						send_str = "There are currently %s accounts in %s's chat." % (chatter_count, chatter_channel)
-				else:
-					send_str = "%s is not an active channel." % msg_arr[1]
-			else:
-				send_str = "Usage: \"!chatters <channel>\""
-			if is_mod(user, channel_parsed, user_type):
-				self.write(send_str)
-			else:	
-				whisper(user, send_str)
-		else:
-			return False
-			
-	def viewers_parse(self, user, msg, channel_parsed, user_type):
-		#viewers
-		viewers_str = "!viewers"
-		if in_front(viewers_str, msg):
-			msg_arr = msg.split()
-			if len(msg_arr) == 1:
-				viewer_data = get_json_stream(channel_parsed)
-				viewer_count = viewer_data["streams"][0]["viewers"]
-				send_str = "There are currently %s viewers in the channel." % (viewer_count)
-			elif len(msg_arr) > 1:
-				viewer_channel = msg_arr[1]
-				viewer_data = get_json_stream(viewer_channel.lower())
-				viewer_count = viewer_data["streams"]
-				if viewer_count:
-					viewer_count = viewer_count[0]["viewers"]
-					viewer_count = prettify_num(viewer_count)
-					if viewer_channel.rstrip().endswith("s"):
-						send_str = "There are currently %s viewers in %s' channel." % (viewer_count, viewer_channel)
-					else:
-						send_str = "There are currently %s viewers in %s's channel." % (viewer_count, viewer_channel)
-				else:
-					send_str = "%s is not an active channel." % msg_arr[1]
-			else:
-				send_str = "Usage: \"!viewers <channel>\""
-			if is_mod(user, channel_parsed, user_type):
-				self.write(send_str)
-			else:	
-				whisper(user, send_str)
-		else:
-			return False
-	
-	def views_parse(self, user, msg, channel_parsed, user_type):
-		views_str = "!views"
-		if in_front(views_str, msg):
-			msg_arr = msg.split()
-			if len(msg_arr) == 1:
-				view_data = get_json_views_follows(channel_parsed.lower().strip())
-				view_count = view_data["views"]
-				send_str = "This channel has %s views." % (view_count)
-			elif len(msg_arr) > 1:
-				views_channel = msg_arr[1]
-				view_data = get_json_views_follows(views_channel.lower().strip())
-				view_count = view_data["views"]
-				if view_count:
-					view_count = prettify_num(view_count)
-					if views_channel.rstrip().endswith("s"):
-						send_str = "There are currently %s views in %s' channel." % (view_count, views_channel)
-					else:
-						send_str = "There are currently %s views in %s's channel." % (view_count, views_channel)
-				else:
-					send_str = "%s is not an active channel." % views_channel
-			else:
-				send_str = "Usage: \"!views <channel>\""
-				
-			if is_mod(user,  channel_parsed, user_type):
-				self.write(send_str)
-			else:	
-				whisper(user, send_str)
-		else:
-			return False
-	
-	def followers_parse(self, user, msg, channel_parsed, user_type):
-		followers_str = "!followers"
-		if in_front(followers_str, msg):
-			msg_arr = msg.split()
-			if len(msg_arr) == 1:
-				follower_data = get_json_views_follows(channel_parsed.lower())
-				follower_count = follower_data["followers"]
-				send_str = "This channel has %s followers." % (follower_count)
-			elif len(msg_arr) > 1:
-				follower_channel = msg_arr[1]
-				follower_data = get_json_views_follows(follower_channel.lower())
-				follower_count = follower_data["followers"]
-				if follower_count:
-					follower_count = prettify_num(follower_count)
-					if follower_channel.rstrip().endswith("s"):
-						send_str = "%s' channel has %s followers." % (follower_channel, follower_count)
-					else:
-						send_str = "%s's channel has %s followers." % (follower_channel, follower_count)
-				else:
-					send_str = "%s is not an active channel." % follower_channel
-			else:
-				send_str = "Usage: \"!followers <channel>\""
-				
-			if is_mod(user, channel_parsed, user_type):
-				self.write(send_str)
-			else:	
-				whisper(user, send_str)
-		else:
-			return False
-	
 	def subs_parse(self, user, msg, channel_parsed, user_type):
 		#subscribers
 		subscribers_str = "!subscribers"
@@ -2624,12 +2722,18 @@ class TwitchBot(irc.IRCClient, object):
 					else:
 						#display usage
 						send_str = "Usage: !commercial <length of commercial>"
+						whisper(user, send_str)
+						return
 				else:
 					#display usage
 					send_str = "Usage: !commercial <length of commercial>"
+					whisper(user, send_str)
+					return
 			else:
 				#not mod
 				send_str = "You have to be the current streamer in order to start commercials." 
+				whisper(user, send_str)
+				return
 			self.write(send_str)
 		else:
 			return False
@@ -2648,8 +2752,8 @@ class TwitchBot(irc.IRCClient, object):
 		if self.ban_emote_on:
 			msg_arr = msg.split(" ")
 			if in_front(ban_emote_str, msg):
-				if is_mod(user, self.channel_parsed, user_type): 
-					if in_front(ban_emote_add_str, msg):
+				if in_front(ban_emote_add_str, msg):
+					if is_mod(user, channel_parsed, user_type):
 						if len(msg_arr) > 3:
 							ban_emote = msg_arr[3]
 							if is_emote(ban_emote, self.emote_arr):
@@ -2683,8 +2787,14 @@ class TwitchBot(irc.IRCClient, object):
 								send_str = "%s is not a valid emote." % (ban_emote)
 						else:
 							send_str = "Usage: \"!ban emote add <emote>\"" 
-				
-					elif in_front(ban_emote_del_str, msg) or in_front(ban_emote_rem_str, msg):
+							whisper(user, send_str)
+							return
+					else:
+						send_str = "You have to be a mod to use \"!ban emote add\"."
+						whisper(user, send_str)
+						return
+				elif in_front(ban_emote_del_str, msg) or in_front(ban_emote_rem_str, msg):
+					if is_mod(user, channel_parsed, user_type):
 						if len(msg_arr) > 3:
 							ban_emote = msg_arr[3]
 							if is_num(ban_emote):
@@ -2718,70 +2828,60 @@ class TwitchBot(irc.IRCClient, object):
 									send_str = "Specified ban emote does not exist." 
 						else:
 							send_str = "Usage: \"!ban emote delete/remove <emote/index>\"" 
-							
-					elif in_front(ban_emote_list_str, msg):
-						if len(self.ban_emote_arr) == 0:
-							send_str = "No active ban emotes." 
-						else:
-							send_str = "Active ban emotes: " 
-							for ban_emote in range(len(self.ban_emote_arr)):
-								if (ban_emote != len(self.ban_emote_arr) -1):
-									#every element but last one
-									if isinstance(self.ban_emote_arr[ban_emote], list):
-										send_str += "(%s.) %s variants, " % (ban_emote+1, self.ban_emote_arr[ban_emote][0])
-									else:
-										send_str += "(%s.) %s, " % (ban_emote+1, self.ban_emote_arr[ban_emote])
+							whisper(user, send_str)
+							return
+					else:
+						send_str = "You have to be a mod to use \"!ban emote delete/remove\"."
+						whisper(user, send_str)
+						return	
+				elif in_front(ban_emote_list_str, msg):
+					if len(self.ban_emote_arr) == 0:
+						send_str = "No active ban emotes." 
+					else:
+						send_str = "Active ban emotes: " 
+						for ban_emote in range(len(self.ban_emote_arr)):
+							if (ban_emote != len(self.ban_emote_arr) -1):
+								#every element but last one
+								if isinstance(self.ban_emote_arr[ban_emote], list):
+									send_str += "(%s.) %s variants, " % (ban_emote+1, self.ban_emote_arr[ban_emote][0])
 								else:
-									#last element in arr
-									if isinstance(self.ban_emote_arr[ban_emote], list):
-										send_str += "(%s.) %s variants." % (ban_emote+1, self.ban_emote_arr[ban_emote][0])
-									else:
-										send_str += "(%s.) %s ." % (ban_emote+1, self.ban_emote_arr[ban_emote])
-					elif in_front(ban_emote_clr_str, msg):
+									send_str += "(%s.) %s, " % (ban_emote+1, self.ban_emote_arr[ban_emote])
+							else:
+								#last element in arr
+								if isinstance(self.ban_emote_arr[ban_emote], list):
+									send_str += "(%s.) %s variants." % (ban_emote+1, self.ban_emote_arr[ban_emote][0])
+								else:
+									send_str += "(%s.) %s ." % (ban_emote+1, self.ban_emote_arr[ban_emote])
+					if not is_mod(user, self.channel_parsed, user_type):
+						whisper(user, send_str)		
+						return
+				elif in_front(ban_emote_clr_str, msg):
+					if is_mod(user, self.channel_parsed, user_type): 
 						self.ban_emote_arr = []
 						send_str = "All ban emotes removed." 
-					elif ban_emote_str == msg:
+					else:
+						send_str = "You have to be a mod to use \"!ban emote clear\"."
+						whisper(user, send_str)
+						return	
+				elif ban_emote_str == msg:
+					if is_mod(user, self.channel_parsed, user_type): 
 						send_str = "Add or remove ban emotes to timeout users who say them. Syntax and more information can be found in the documentation." 
 					else:
-						send_str = "Usage: \"!ban emote add/delete/remove/list/clear\"" 
-					self.write(send_str)
+						send_str = "You have to be a mod to use \"!ban emote delete/remove\"."
+						whisper(user, send_str)
+						return	
 				else:
-					send_str = "You have to be a mod to use !ban emote commands." 
-					self.write(send_str)
+					if is_mod(user, channel_parsed, user_type):
+						send_str = "Usage: \"!ban emote add/delete/remove/list/clear\"" 
+					else:
+						send_str = "Usage: \"!ban emote list\"" 
+					whisper(user, send_str)
+					return	
+				self.write(send_str)
 			else:
 				return False
 		else:
 			return False
-		'''ban_emote_str = "!ban emote"
-		unban_emote_str = "!unban emote"
-		#ban emotes
-		if self.ban_emote_on:
-			if in_front(ban_emote_str, msg):
-				if is_mod(user, self.channel_parsed, user_type):
-					msg_arr = msg.split(" ")
-					if msg_arr == 3:
-						ban_emote = msg_arr[2]
-						self.ban_emote_arr.append(ban_emote)
-						send_str = "Emote \"%s\" banned." % (ban_emote)
-					else:
-						send_str = "Usage: \"!ban emote <emote>\"" 
-				else:
-					send_str = "Only mods can ban emotes." 
-				self.write(send_str)
-				return
-			if in_front(unban_emote_str, msg):
-				if is_mod(user, self.channel_parsed, user_type):
-					msg_arr = msg.split(" ")
-					if msg_arr == 3:
-						ban_emote = msg_arr[2]
-						self.ban_emote_arr.remove(ban_emote)
-						send_str = "%sEmote \"%s\" unbanned." % (ban_emote)
-					else:
-						send_str = "%sUsage: \"!unban emote <emote>\"" 
-				else:
-					send_str = "%sOnly mods can unban emotes." 
-				self.write(send_str)
-				return'''
 	
 	def repeat_parse(self, user, msg, channel_parsed, user_type):
 		#repeat commands
@@ -2798,17 +2898,22 @@ class TwitchBot(irc.IRCClient, object):
 		
 		if self.repeat_on:
 			if in_front(repeat_str, msg):
-				if is_mod(user, self.channel_parsed, user_type):
-					if in_front(repeat_add_str, msg):
+				if in_front(repeat_add_str, msg):
+					if is_mod(user, channel_parsed, user_type):
 						msg_arr = msg.split(" ")
 						if len(msg_arr) > 3:
 							del msg_arr[0:2]#remove command specifiers
 							repeat_cmd = ''
 							for cmd_part in range(len(msg_arr)):
-								if cmd_part == len(msg_arr)-1:
+								if cmd_part == len(msg_arr)-2 and msg_arr[cmd_part+1] in self.time_unit_arr:#if unit of time specified
+									repeat_cmd = repeat_cmd.rstrip()
+									repeat_interval = simplify_num(msg_arr[cmd_part])
+									interval_unit = msg_arr[cmd_part+1]
+									repeat_interval = convert_to_sec(repeat_interval, interval_unit, self)
+									break
+								elif cmd_part == len(msg_arr)-1:#if no unit of time specified, seconds
 									repeat_cmd = repeat_cmd.rstrip()#get rid of trailing space
 									repeat_interval = msg_arr[cmd_part]
-									
 								else:
 									repeat_cmd += msg_arr[cmd_part] + " "
 							if not disconnect_cmd(repeat_cmd):
@@ -2820,7 +2925,14 @@ class TwitchBot(irc.IRCClient, object):
 								send_str = "No \".disconnect\" or \"/disconnect\" variants allowed."
 						else:
 							send_str = "Usage: !repeat add <command> <interval>" 
-					elif in_front(repeat_del_str, msg) or in_front(repeat_rem_str, msg):
+							whisper(user, send_str)
+							return
+					else:
+						send_str = "You have to be a mod to use \"!repeat add\"." 
+						whisper(user, send_str)
+						return
+				elif in_front(repeat_del_str, msg) or in_front(repeat_rem_str, msg):
+					if is_mod(user, channel_parsed, user_type):
 						msg_arr = msg.split(" ", 2)
 						if len(msg_arr) > 2:
 							repeat_cmd = msg_arr[2]
@@ -2842,31 +2954,48 @@ class TwitchBot(irc.IRCClient, object):
 									send_str = "Specified repeat command does not exist." 
 						else:
 							send_str = "Usage: !repeat delete/remove <command/index>" 
-					elif repeat_list_str == msg:
-						if len(self.repeat_arr) == 0:
-							send_str = "No active repeat commands." 
-						else:
-							send_str = "Active repeat commands: " 
-							for repeat_set in range(len(self.repeat_arr)):
-								repeat_cmd = self.repeat_arr[repeat_set][1]
-								repeat_interval = self.repeat_arr[repeat_set][2]
-								if (repeat_set != len(self.repeat_arr)-1):
-									#every element but last one
-									send_str += "(%s.) %s: %s, " % (repeat_set+1, repeat_cmd, parse_sec_condensed(repeat_interval))
-								else:
-									#last element in arr
-									send_str += "(%s.) %s: %s." % (repeat_set+1, repeat_cmd, parse_sec_condensed(repeat_interval))
-								
-					elif repeat_clr_str == msg:
+							whisper(user, send_str)
+							return
+					else:
+						send_str = "You have to be a mod to use \"!repeat delete/remove\"." 
+						whisper(user, send_str)
+						return
+				elif repeat_list_str == msg:
+					if len(self.repeat_arr) == 0:
+						send_str = "No active repeat commands." 
+					else:
+						send_str = "Active repeat commands: " 
+						for repeat_set in range(len(self.repeat_arr)):
+							repeat_cmd = self.repeat_arr[repeat_set][1]
+							repeat_interval = self.repeat_arr[repeat_set][2]
+							if (repeat_set != len(self.repeat_arr)-1):
+								#every element but last one
+								send_str += "(%s.) %s: %s, " % (repeat_set+1, repeat_cmd, parse_sec_condensed(repeat_interval))
+							else:
+								#last element in arr
+								send_str += "(%s.) %s: %s." % (repeat_set+1, repeat_cmd, parse_sec_condensed(repeat_interval))
+					if not is_mod(user, self.channel_parsed, user_type):
+						whisper(user, send_str)		
+						return			
+				elif repeat_clr_str == msg:
+					if is_mod(user, self.channel_parsed, user_type): 
 						self.repeat_arr = []
 						send_str = "All repeat commands removed." 
-					elif repeat_str == msg:
-						send_str = "Add or remove commands to be repeated every specified interval. Syntax and more information can be found in the documentation." 
 					else:
-						send_str = "Usage: !repeat <add/delete/remove/list/clear> <command> <interval>" 
+						send_str = "You have to be a mod to use \"!repeat clear\"." 
+						whisper(user, send_str)
+						return
+				elif repeat_str == msg:
+					send_str = "Add or remove commands to be repeated every specified interval. Syntax and more information can be found in the documentation." 
+					whisper(user, send_str)
+					return
 				else:
-					#not moderino
-					send_str = "You have to be a mod to use !repeat commands." 
+					if is_mod(user, channel_parsed, user_type):
+						send_str = "Usage: !repeat add/delete/remove/list/clear <command> <interval>" 
+					else:
+						send_str = "Usage: !repeat list" 
+					whisper(user, send_str)
+					return
 				self.write(send_str)
 				return
 			else:
@@ -2883,9 +3012,9 @@ class TwitchBot(irc.IRCClient, object):
 		
 		if self.cmd_on:
 			if in_front(cmd_str, msg):
-				if is_mod(user, self.channel_parsed, user_type):
-					#add commands
-					if in_front(cmd_add_str, msg):
+				#add commands
+				if in_front(cmd_add_str, msg):
+					if is_mod(user, channel_parsed, user_type):
 						msg_arr = msg.split(" ", 2)
 						if len(msg_arr) == 3:
 							if ":" in msg_arr[2] and in_front("!", msg_arr[2]):
@@ -2913,14 +3042,25 @@ class TwitchBot(irc.IRCClient, object):
 								else:
 									#incorrectly formatted, display usage
 									send_str = "Usage: \"!command add !<command>:<reply>\"." 
+									whisper(user, send_str)
+									return	
 							else:
 								#incorrectly formatted, display usage
 								send_str = "Usage: \"!command add !<command>:<reply>\"." 
+								whisper(user, send_str)
+								return
 						else:
 							#incorrectly formatted, display usage
-							send_str = "Usage: \"!command add !<command>:<reply>\"." 
-					#delete commands
-					elif in_front(cmd_del_str, msg) or in_front(cmd_rem_str, msg):
+							send_str = "Usage: \"!command add !<command>:<reply>\"."
+							whisper(user, send_str)
+							return
+					else:
+						send_str = "You have to be a mod to use \"!command add\"." 
+						whisper(user, send_str)
+						return
+				#delete commands
+				elif in_front(cmd_del_str, msg) or in_front(cmd_rem_str, msg):
+					if is_mod(user, channel_parsed, user_type):
 						msg_arr = msg.split(" ", 2)
 						if len(msg_arr) == 3:
 							cmd_phrase = msg_arr[2]
@@ -2943,49 +3083,75 @@ class TwitchBot(irc.IRCClient, object):
 						else:
 							#incorrectly formatted, display usage
 							send_str = "Usage: \"!command delete/remove <command/index>\"." 
-					#list commands
-					elif cmd_list_str == msg:
-						#check to make sure there are commands to list
-						if len(self.cmd_arr) == 0:
-							send_str = "No active commands." 
-						else:
-							send_str = "Active commands: " 
-							for cmd_pair in range(len(self.cmd_arr)):
-								cmd_phrase = self.cmd_arr[cmd_pair][0]
-								cmd_reply = self.cmd_arr[cmd_pair][1]
-								if (cmd_pair != len(self.cmd_arr)-1):
-									#every element but last one
-									send_str += "(%s.) %s: %s, " % (cmd_pair+1, cmd_phrase, cmd_reply)
-								else:
-									#last element in arr
-									send_str += "(%s.) %s: %s." % (cmd_pair+1, cmd_phrase, cmd_reply)
-									
-					#clear commands
-					elif cmd_clr_str == msg:
+					else:
+						send_str = "You have to be a mod to use \"!command delete/remove\"." 
+						whisper(user, send_str)
+						return
+				#list commands
+				elif cmd_list_str == msg:
+					#check to make sure there are commands to list
+					if len(self.cmd_arr) == 0:
+						send_str = "No active commands." 
+					else:
+						send_str = "Active commands: " 
+						for cmd_pair in range(len(self.cmd_arr)):
+							cmd_phrase = self.cmd_arr[cmd_pair][0]
+							cmd_reply = self.cmd_arr[cmd_pair][1]
+							if (cmd_pair != len(self.cmd_arr)-1):
+								#every element but last one
+								send_str += "(%s.) %s: %s, " % (cmd_pair+1, cmd_phrase, cmd_reply)
+							else:
+								#last element in arr
+								send_str += "(%s.) %s: %s." % (cmd_pair+1, cmd_phrase, cmd_reply)
+					
+					if not is_mod(user, self.channel_parsed, user_type):
+						whisper(user, send_str)		
+						return
+				#clear commands
+				elif cmd_clr_str == msg:
+					if is_mod(user, channel_parsed, user_type):
 						self.cmd_arr = []
 						send_str = "All custom commands removed." 
-					#just cmd string, display usage
-					elif cmd_str == msg:
-						send_str = "Add or remove custom commands. Syntax and more information can be found in the documentation." 
 					else:
-						send_str = "Usage: !command add/delete/remove/list/clear" 
+						send_str = "You have to be a mod to use \"!command clear\"." 
+						whisper(user, send_str)
+						return
+				#just cmd string, display usage
+				elif cmd_str == msg:
+					send_str = "Add or remove custom commands. Syntax and more information can be found in the documentation." 
+					whisper(user, send_str)
+					return
 				else:
-					send_str = "You have to be a mod to use !command commands." 
+					if is_mod(user, channel_parsed, user_type):
+						send_str = "Usage: !command add/delete/remove/list/clear" 
+					else:
+						send_str = "Usage: !command list." 
+					whisper(user, send_str)
+					return
 				self.write(send_str)
-			else:			
+			else:	
+				################################################################################
+				####THIS NEEDS TO NOT BE IS MOD BUT DEPEND ON THE LEVEL PARAMETER OF THE COMMAND
+				################################################################################
 				for cmd_pair in self.cmd_arr:
 					if cmd_pair[0] == msg:
-						reply = cmd_pair[1]
-						if in_front("/w", reply) or in_front(".w", reply):
-							whisper_response(reply)
+						if is_mod(user, channel_parsed, user_type):
+							reply = cmd_pair[1]
+							if in_front("/w", reply) or in_front(".w", reply):
+								whisper_response(reply)
+							else:
+								self.write(reply)
+							return False
 						else:
-							self.write(reply)
-						return False
+							send_str = "You have to be a mod to use custom commands." 
+							whisper(user, send_str)
+							return
 				return False
 		else:
 			return False
 	
 	def emote_stats_parse(self, user, msg, channel_parsed, user_type):
+		#going to be deprecated RIP
 		emote_stats_str = "!stats"
 		if self.emote_stats_on:
 			if in_front(emote_stats_str, msg):
@@ -3036,11 +3202,34 @@ class TwitchBot(irc.IRCClient, object):
 					self.write(repeat_cmd)
 					self.main_parse(self.nickname, repeat_cmd, 'mod')
 
+	def follower_check(self):
+		current_time = time.time()
+		if current_time - self.last_follow_check_time > 60:
+			if self.follower_arr != []:
+				self.follower_arr, new_follower_arr = get_new_followers(self.follower_arr, self.channel_parsed, self)
+				if len(new_follower_arr) > 0:
+					send_str = "Thanks for following "
+					for new_follower_index, new_follower in enumerate(new_follower_arr):
+						if new_follower_index != len(new_follower_arr)-1:
+							send_str += "%s, " % new_follower
+						else:
+							send_str += "and %s!" % new_follower
+			else:
+				self.follower_arr, new_follower_arr = new_follower(self.follower_arr, self.channel_parsed, self)
+						
+	'''def chatter_check(self):
+		if self.topic_on:
+			current_time = time.time()
+			if current_time - self.last_chatter_check_time > 60: # seconds
+				#check for new chatters and whisper
+				if new_follower'''
+			
 	def title_parse(self, user, msg, channel_parsed, user_type):
 		title_str = "!title"
+		status_str = "!status"
 		
 		msg_arr = msg.split(" ", 1)
-		if in_front(title_str, msg):
+		if in_front(title_str, msg) or in_front(status_str, msg):
 			if len(msg_arr) > 1:
 				if is_streamer(user, channel_parsed):
 					self.title = msg_arr[1]
@@ -3051,7 +3240,7 @@ class TwitchBot(irc.IRCClient, object):
 					headers = {'content-type': 'application/json', 'Accept': 'application/vnd.twitchtv.v3+json'}
 					r = requests.put(url, data=data, headers=headers)
 				else:
-					send_str = "You have to be the streamer to change the channel title"
+					send_str = "You have to be the streamer to change the channel title."
 					whisper(user, send_str)
 			else:
 				if self.title != "":
@@ -3120,6 +3309,36 @@ class TwitchBot(irc.IRCClient, object):
 		else:
 			return False
 	
+	def purge_parse(self, user, msg, channel_parsed, user_type):
+		purge_str = "!purge"
+		if in_front(purge_str, msg):
+			if is_mod(user, channel_parsed, user_type):
+				msg_arr = msg.split()
+				if len(msg_arr) > 1:
+					purge_user = msg_arr[1]
+					if is_streamer(purge_user, channel_parsed):
+						send_str = "I cannot purge the streamer."
+					elif is_purge_mod(purge_user, channel_parsed):
+						send_str = "I cannot purge other moderators."
+					else:
+						timeout(purge_user, self, self.purge_duration)
+						send_str = "User %s has been purged." % purge_user
+				elif len(msg_arr) == 1:
+					send_str = "Time the user out for a short duration, deleting their messages. Syntax and more information can be found in the documentation."
+					whisper(user, send_str)
+					return
+				else:
+					send_str = "Usage: !purge <user>"
+					whisper(user, send_str)
+					return
+			else:
+				send_str = "Only mods can use \"!purge\"."
+				whisper(user, send_str)
+				return	
+			self.write(send_str)
+		else:
+			return False
+			
 	def main_parse(self, user, msg, user_type):
 		comm_len_arr = [30, 60, 90, 120, 150, 180]
 		#need to make this off, until mod turns it on with a command
@@ -3243,8 +3462,6 @@ class TwitchBot(irc.IRCClient, object):
 		if self.mods_parse(user, msg, self.channel_parsed, user_type) != False:
 			return
 		
-	
-			
 		if self.topic_parse(user, msg, self.channel_parsed, user_type) != False:
 			return
 			
@@ -3252,6 +3469,9 @@ class TwitchBot(irc.IRCClient, object):
 			return
 		
 		if self.title_parse(user, msg, self.channel_parsed, user_type) != False:
+			return
+		
+		if self.purge_parse(user, msg, self.channel_parsed, user_type) != False:
 			return
 		#welcome newcomers - seems to be working with viewers and followers atm - need to figure out subs however
 		#NOTE: TEMPORARILY DISABLED BECAUSE IT IS ANNOYING AS FUCK WHEN NOT PERMANENTLY ONLINE
@@ -3360,7 +3580,7 @@ class TwitchBot(irc.IRCClient, object):
 		logging.warning(tags['msg-id'])
 		#for /mods response
 		if args[0] == self.channel and "The moderators of this room are:" in args[1]:
-			args[1] += ", and %s" % self.channel.replace("#", "")
+			args[1] += ", and %s." % self.channel.replace("#", "")
 			self.write(args[1])
 
 	def write(self, msg):
