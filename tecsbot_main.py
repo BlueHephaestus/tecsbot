@@ -37,12 +37,9 @@ still cant track emotes it's not seeing, can't see them if it's not online. Perm
 multi channel processing for comparison stats?
 famous person has joined chat
 donations <-if this isnt already done very well
-hours til next strim?
+hours til next strim? <--countdown command
 score of current game/tourney/bo3/etc
 song functionality
-welcome newcomers
-	custom message
-	need to auth before getting subs
 sub notifications
 raffle -  expiration timer?
 commands for mods to change game or title or other(commercials?)
@@ -65,6 +62,7 @@ excludes for "regulars" and subs
 offtime - time stream has been offline
 the minimum number of symbols should be disabled by default
 link our access_token html file and this file 
+	this is going to be completely different most likely when we do this on a server, so for now we are just doing a text file edit
 need to make friends with a twitch partner
 need to have command to check if user is subscribed to channel 
 	!subscribed /!subbed <user>
@@ -95,14 +93,6 @@ add in lottery
 arguments for autoreplies and cusotm commands and etc
 add !leave and !join commands (and !rejoin)
 make stats for all words instead of just emotes
-Receiving whispers:
-	test
-	roulette - default settings
-	8ball - default settings
-	uptime - have to specify channel
-	chatters viewers folllowers - specify channel, add in global capabilities
-	emote stats - yes but global or maybe channel addition as well? need to do this after we have the whole thing upgraded
-	respond to non mod commands with whispers
 https://apis.rtainc.co/twitchbot/status?user=Darkelement75 custom api link
 	http://deepbot.tv/wiki/Custom+Commands
 should we deprecate ban emotes if we won't be distincting between emotes and words in the stats future?
@@ -111,14 +101,10 @@ add in default autoreplies and commands for examples
 argument for mod requirement custom commands autoreplies
 	allow it for already existing commands, maybe edit in GUI
 	allow it to be input for custom and autoreply commands
-link regex #2 - inches...DansGame is not a link god dammit
-name changing capabilities
+execute commands with streamer capabilities
 http://deepbot.deep.sg/wiki/Bot+Commands
-if topic != "":
-	whisper topic to new chatters
 @customapi@[api link] where customapi is a variable that represents the data on the api link, ie how nightbot has uptime api link
 	use more try except/catch 
-just use [str(v) for v in list_thing] to remove unicode from strings<--what code was he referring to
 apparently there are a few specific characters that zalgo text needs
 we can put the large num of variables in another file and import if necessary
 oauth_on variable
@@ -128,10 +114,9 @@ dont let it time out mods unless it can send messages on behalf of streamer?
 seriously need a way to get the /mods list so that we can know if a user is a mod by the /mods list 
 	Get /mods response loudly when doing !mods
 	Get /mods silently when doing !purge and checking if is a mod
-can make it get the original followers at init and continuefrom there
-####################################################################
-#you were working on this ^ the new followers notifications
-####################################################################
+need to check for if data when doing viewers for the current channel
+handle if user is not playing when doing !game
+do welcome back if they have been here before, and only the original message for the others
 """
 '''misc
  function loadEmotes() { $.getJSON("https://api.betterttv.net/emotes").done(function(data) { $emotes.text(''); parseEmotes(data.emotes); }).fail(function() { $('#emote').text("Error loading emotes.."); }); }
@@ -240,17 +225,14 @@ permit_time = 30 #seconds
 
 link_whitelist_arr = []
 
-'''
-#this is already in channel settings
-blacklist_timeout = 10 #seconds
-blacklist_arr = ["belgium"]
-'''
+
 #This determines whether to do search_str == msg, or search_str in message when looking for commands
 cmd_match_full = True
 
 #initial connect
 f = open("C:\\Python27\\Scripts\\bot_oauth.log", "r")
 access_token = f.readlines()[1]
+client_id = "jpf2a90oon0wqdnno5ygircwgomt9rz"
 
 whisper_msg = ""
 whisper_user = ""
@@ -307,22 +289,6 @@ def print_dict_by_value(dictionary):
 		else:
 			print "%s:\t%s" % (key, value[0])
 
-'''dont think we will ever use this again
-def update_dict():
-	print "Checking Logs..."
-	
-	log_file = open(log_file_path, 'r')
-	for msg in log_file:
-		emotes_file = open(emote_file_path, 'r')
-		for emote in emotes_file:
-			#parsing stuff
-			emote = emote.rstrip()
-			if msg.count(emote) != 0:
-				emote_count = msg.count(emote)
-				#count_dict[emote] = emote
-				#needs to add to existing count
-				count_dict[emote][0] += emote_count'''
-
 def find_per_min(emote, count_dict, channel_parsed):
 	emote_count = count_dict[emote][0]
 	#this number is from the start of the program to the current time of the query, 
@@ -351,7 +317,7 @@ def get_json_stream(channel_parsed):
 	ValueError: No JSON object could be decoded'''
 	url = "https://api.twitch.tv/kraken/streams?channel=%s" % channel_parsed
 	while True:
-		try:
+		try:			
 			return requests.get(url).json()
 		except Exception, err:
 			print Exception, err
@@ -360,15 +326,31 @@ def get_json_stream(channel_parsed):
 def get_json_views_follows(channel_parsed):
 	url = "https://api.twitch.tv/kraken/channels/%s" % channel_parsed
 	return requests.get(url).json()
+
+def get_json_followers_list(channel_parsed):
+	url = "https://api.twitch.tv/kraken/channels/%s/follows/" % channel_parsed
+	while True:
+		try:
+			return requests.get(url).json()
+		except:
+			pass
 	
 def get_json_chatters(channel_parsed):
 	url = "https://tmi.twitch.tv/group/user/%s/chatters" % channel_parsed
-	return requests.get(url).json()
+	while True:
+		try:
+			return requests.get(url).json()
+		except:
+			pass
 
 def get_json_subs(channel_parsed):	
 	url = "https://api.twitch.tv/kraken/channels/%s/subscriptions" % channel_parsed
 	data = requests.get(url, params={'oauth_token': access_token})
-	return data.json()
+	while True:
+		try:
+			return data.json()
+		except:
+			pass
 
 def get_json_sub_user(channel_parsed, user):
 	url = "https://api.twitch.tv/kraken/channels/%s/subscriptions/%s" % (channel_parsed, user)
@@ -391,19 +373,6 @@ def start_commercial(length, channel_parsed):
 	data = requests.post(url, data={'oauth_token': access_token, 'length' : length})
 	print data.json()
 	return data.json()
-	
-def stream_online(channel_parsed):
-	#we use this return value to trigger the loop of everything.
-	channel_json = get_json_stream(channel_parsed)
-	while True:
-		try:
-			stream_status = channel_json["streams"]
-			if stream_status == None:
-				return False
-			else:
-				return True
-		except:
-			pass
 	
 def get_uptime_min(channel_parsed):
 	channel_json = get_json_stream(channel_parsed)
@@ -535,38 +504,28 @@ def is_streamer(user, channel_parsed):
 		return True
 	else:
 		return False
+
+def get_new_viewers(viewer_arr, channel_parsed, self):
+	viewers_json = get_json_chatters(channel_parsed)#this request returns the moderators and the viewers, viewers are closest thing we have to chatters
+	new_viewer_arr = []
 	
-def create_viewer_arr(channel_parsed):
-	channel_json = get_json_chatters(channel_parsed)
-	viewer_arr = []
-	viewers = channel_json["chatters"]["viewers"]
-	viewer_arr.extend(viewers)
-	return viewer_arr
+	for viewer in viewers_json["chatters"]["viewers"]:#twitch pls y u do dis
+		if viewer not in viewer_arr:
+			viewer_arr.append(viewer)
+			new_viewer_arr.append(viewer)
+	return viewer_arr, new_viewer_arr
 	
 def get_new_followers(follower_arr, channel_parsed, self):
-	follows_json = get_json_follows(channel_parsed)
+	follows_json = get_json_followers_list(channel_parsed)
 	new_follower_arr = []
 	
 	for follower in follows_json["follows"]:
+		follower = follower["user"]["name"]
 		if follower not in follower_arr:
 			follower_arr.append(follower)
 			new_follower_arr.append(follower)
 	return follower_arr, new_follower_arr	
-	'''#need to return follower if there are any, and false if not
-	if len(follows_json["follows"]) > 0:
-		if follows_json["follows"][0]["user"]["display_name"] not in follower_arr:
-			#if the first is not already recorded, then new follower
-			follower_arr.append(follows_json["follows"][0]["user"]["display_name"])
-			send_str = "Hello %s! Thank you for following %s's channel!" % (follows_json["follows"][0]["user"]["display_name"], channel_parsed)
-			self.write(send_str)
-		for follower in follows_json["follows"]:
-			#add all that arent already recorded
-			if follower["user"]["display_name"] not in follower_arr:
-				follower_arr.append(follower["user"]["display_name"])
-		return follower_arr
-	else:
-		return False'''
-
+	
 def timeout_thread(self, send_str):
 	time.sleep(2)
 	self.write(send_str)
@@ -828,15 +787,6 @@ class TwitchBot(irc.IRCClient, object):
 		self.channel_parsed = self.channel.replace("#", "")
 		server = 'irc.twitch.tv'
 		
-		'''irc = socket.socket()
-		irc.connect((server, 6667)) #connects to the server
-		#sends variables for connection to twitch chat
-		irc.send("CAP REQ :twitch.tv/tags")
-		irc.send('PASS ' + password + "")
-		irc.send('USER ' + nick + ' 0 * :' + bot_owner + "")
-		irc.send('NICK ' + nick + "")
-		irc.send('JOIN ' + self.channel + "")'''
-		
 		self.rol_on = True
 		self.ball_on = True
 		self.banphrase_on = True
@@ -863,18 +813,7 @@ class TwitchBot(irc.IRCClient, object):
 		
 		self.vote_on = False
 		self.cmd_on = True
-		#emotes_file = open(emote_file_path, 'r')
-		#log_file = open(log_file_path, 'r')	
 		
-		#should delete dictionary of values when/if stream goes offline.
-		
-		#update_dict()
-		#print_dict_by_value(count_dict)
-		
-		#start with empty array of followers
-		self.follower_arr = []
-		#add current viewers to viewer_arr so we dont welcome everyone
-		self.viewer_arr = create_viewer_arr(self.channel_parsed)
 		self.raffle_users = []
 		
 		#self.vote_on = False
@@ -909,16 +848,28 @@ class TwitchBot(irc.IRCClient, object):
 		self.vote_dict = {}
 		self.vote_total = 0
 		
-		self.topic = ''
+		#################3needs to be empty
+		self.topic = 'ayy lmao'
 		self.game = ''
 		self.title = ''
 		
+		stream_data = get_json_stream(self.channel_parsed)["streams"]
+		if stream_data:
+			self.game = stream_data[0]["game"]
+		
+			
 		self.rol_chance = .5
 		self.rol_timeout = 5 #seconds
 		
 		self.purge_duration = 5
-		self.last_chatter_check_time = 0
-		self.last_follow_check_time = 0
+		self.viewer_check_interval = 60
+		self.follower_check_interval = 300#5 min
+		self.stream_status_check_interval = 300#5 min
+		
+		self.chatter_arr = []
+		self.lurker_arr = []
+		self.stream_status = False
+		self.welcome_msg = "Welcome to the channel! The current topic is \"%s\""  % self.topic
 		
 		self.default_permit_time = 30#seconds
 		self.default_permit_msg_count = 10#msgs
@@ -930,27 +881,25 @@ class TwitchBot(irc.IRCClient, object):
 		self.count_dict = create_count_dict(self.emote_arr)
 		
 		self.default_cmd_arr = ['!link whitelist', '!permit', '!banphrase', '!autoreply', '!set', '!vote', '!raffle', '!roulette', '!8ball', '!uptime', '!chatters', '!viewers', '!subs', '!subscribers', '!commercial', '!ban emote', '!repeat']
-		'''if self.permit_arr == []:
-			current_time = time.time()
-			permit_pair = [current_time, nick, 420, "time"]
-			self.permit_arr.append(permit_pair)
-			permit_nick = "Tmi.twitch.tv 001 %s" % nick
-			permit_pair = [current_time, permit_nick, 322, "time"]#number irrelevant
-			self.permit_arr.append(permit_pair)'''
 		
-		#old regex = '\S+\.\w{2,6}\b(?!\.)'
-		#less old regex = \S+[^\d]\.\w{2,6}\b(?!\.)
-		self.link_regex = re.compile(ur'(?![\d\.]\b)(\S+\.[^\d]{2,6})\b', re.MULTILINE)
-		#registers "a[].remove()" as a link
-		#if this one fails, try this one, i'm pretty sure it's actually better 
-		#(?![\d\.]\b)(\S+\.[^\d]{2,6})\b
-		check_loop = LoopingCall(self.repeat_check)
-		check_loop.start(0.003)
-		#check_loop = LoopingCall(self.chatter_check)
-		#check_loop.start(0.003)
-		check_loop = LoopingCall(self.follower_check)
-		check_loop.start(0.003)
-	
+		self.follower_arr = []
+		self.viewer_arr = []
+		self.follower_arr, new_follower_arr = get_new_followers(self.follower_arr, self.channel_parsed, self)
+		self.viewer_arr, new_viewer_arr = get_new_viewers(self.viewer_arr, self.channel_parsed, self)
+		
+		self.link_regex = re.compile(ur'^(?:https?:\/\/)?\w+(?:\.\w{2,})+$\b', re.MULTILINE)
+		check_loop_repeats = LoopingCall(self.repeat_check)
+		check_loop_repeats.start(0.003)
+		
+		check_loop_viewers = LoopingCall(self.viewer_check)
+		check_loop_viewers.start(self.viewer_check_interval)
+		
+		check_loop_followers= LoopingCall(self.follower_check)
+		check_loop_followers.start(self.viewer_check_interval)
+		
+		check_loop_stream_status = LoopingCall(self.stream_status_check)
+		check_loop_stream_status.start(self.stream_status_check_interval)
+		
 	def link_whitelist_parse(self, user, msg, channel_parsed, user_type):
 		link_whitelist_str = "!link whitelist"
 		link_whitelist_add_str = "!link whitelist add"
@@ -2657,7 +2606,7 @@ class TwitchBot(irc.IRCClient, object):
 					elif stat_str == "views":
 						send_str = "There are currently %s views in %s channel." % (stat_count, stat_channel)
 					elif stat_str == "followers":
-						send_str = "%s channel has %s followers." % (stat_channel, stat_count)
+						send_str = "%s channel has %s followers." % (stat_channel.capitalize(), stat_count)
 				else:
 					send_str = "%s is not an active channel." % msg_arr[1]
 			else:
@@ -2670,6 +2619,46 @@ class TwitchBot(irc.IRCClient, object):
 		else:
 			return False
 	
+	def channel_stats_parse(self, user, msg, channel_parsed, user_type):
+		chan_stats_str = "!chanstats"
+		if in_front(chan_stats_str, msg):
+			msg_arr = msg.split(" ")
+			if len(msg_arr) == 1:
+				stat_data = get_json_stream(channel_parsed.lower().strip())
+				stat_data= stat_data["streams"]
+				if stat_data:
+					if self.game != '':
+						send_str = "%s is playing %s for %s viewers." % (channel_parsed.capitalize(), self.game, stat_data[0]["viewers"])
+					else:
+						send_str = "%s is not playing a game, however there are %s viewers" % (channel_parsed.capitalize(), stat_data[0]["viewers"])
+				else:
+					send_str = "%s is currently offline." % channel_parsed.capitalize()
+				if not is_mod(user, channel_parsed, user_type):
+					whisper(user, send_str)
+					return
+					
+			elif len(msg_arr) > 1:
+				stat_data = get_json_stream(msg_arr[1].lower().strip())
+				stat_data = stat_data["streams"]
+				if stat_data:
+					channel_game = stat_data[0]["game"]
+					if channel_game:
+						send_str = "%s is playing %s for %s viewers." % (msg_arr[1].capitalize(), channel_game, stat_data[0]["viewers"])
+					else:
+						send_str = "%s is not playing a game, however there are %s viewers" % (msg_arr[1].capitalize(), stat_data[0]["viewers"])
+				else:
+					send_str = "%s is not an active channel." % msg_arr[1].capitalize()
+				if not is_mod(user, channel_parsed, user_type):
+					whisper(user, send_str)
+					return
+			else:
+				send_str = "Usage: !chanstats <channel>"
+				whisper(user, send_str)
+				return
+			self.write(send_str)
+		else:
+			return False
+			
 	def subs_parse(self, user, msg, channel_parsed, user_type):
 		#subscribers
 		subscribers_str = "!subscribers"
@@ -3201,29 +3190,56 @@ class TwitchBot(irc.IRCClient, object):
 					repeat_set[0] = current_time#update the time
 					self.write(repeat_cmd)
 					self.main_parse(self.nickname, repeat_cmd, 'mod')
-
-	def follower_check(self):
-		current_time = time.time()
-		if current_time - self.last_follow_check_time > 60:
-			if self.follower_arr != []:
-				self.follower_arr, new_follower_arr = get_new_followers(self.follower_arr, self.channel_parsed, self)
-				if len(new_follower_arr) > 0:
-					send_str = "Thanks for following "
-					for new_follower_index, new_follower in enumerate(new_follower_arr):
-						if new_follower_index != len(new_follower_arr)-1:
-							send_str += "%s, " % new_follower
-						else:
-							send_str += "and %s!" % new_follower
-			else:
-				self.follower_arr, new_follower_arr = new_follower(self.follower_arr, self.channel_parsed, self)
-						
-	'''def chatter_check(self):
-		if self.topic_on:
-			current_time = time.time()
-			if current_time - self.last_chatter_check_time > 60: # seconds
-				#check for new chatters and whisper
-				if new_follower'''
+					
+	def viewer_check(self):
+		if self.topic_on and self.stream_status:
+			#check for new viewers and whisper
+			self.viewer_arr, new_viewer_arr = get_new_viewers(self.viewer_arr, self.channel_parsed, self)
 			
+			if len(new_viewer_arr) > 0 and self.topic != "":
+				send_str = "Welcome to the channel! The current topic is \"%s\""  % self.topic
+				for new_viewer in new_viewer_arr:
+					if new_viewer not in self.chatter_arr:
+						self.lurker_arr.append(new_viewer.encode("utf-8"))
+					else:
+						whisper(new_viewer, send_str.encode("utf-8"))
+						
+	def follower_check(self):
+		self.follower_arr, new_follower_arr = get_new_followers(self.follower_arr, self.channel_parsed, self)
+		if len(new_follower_arr) > 0:
+			send_str = "Thanks for following "
+			if len(new_follower_arr) == 1:
+				send_str += "%s!" % new_follower_arr[0]
+			elif len(new_follower_arr) == 2:
+				send_str += "%s and %s!" % (new_follower_arr[0], new_follower_arr[1])
+			else:
+				for new_follower_index, new_follower in enumerate(new_follower_arr):
+					if new_follower_index != len(new_follower_arr)-1:
+						send_str += "%s, " % new_follower
+					else:
+						send_str += "and %s!" % new_follower
+			try:
+				self.write(send_str.encode("utf-8"))
+			except:
+				pass
+	
+	def stream_status_check(self):
+		channel_json = get_json_stream(self.channel_parsed)
+		while True:
+			try:
+				stream_status = channel_json["streams"]
+				if stream_status == []:
+					self.viewer_arr = []
+					self.chatter_arr = []
+					self.lurker_arr = []
+					self.stream_status = False
+					return
+				else:
+					self.stream_status = True
+					return
+			except:
+				pass
+				
 	def title_parse(self, user, msg, channel_parsed, user_type):
 		title_str = "!title"
 		status_str = "!status"
@@ -3351,6 +3367,11 @@ class TwitchBot(irc.IRCClient, object):
 		current_time = time.time()
 		#[current_msg_count, user, msg_count, type]
 		#[current_time, user, permit_time, type]
+		if user not in self.chatter_arr:#so that we don't say "Welcome!" until we know they aren't a lurker
+			self.chatter_arr.append(user)
+			if user in self.lurker_arr:#if they were a lurker, then welcome them now
+				whisper(user, self.welcome_msg)
+				
 		for permit_pair in self.permit_arr:
 			if permit_pair[3] == "message":
 				if user == permit_pair[1]:
@@ -3439,6 +3460,12 @@ class TwitchBot(irc.IRCClient, object):
 			return
 			
 		if self.general_channel_stats_parse(user, msg, self.channel_parsed, user_type, "followers") != False:
+			return	
+			
+		if self.general_channel_stats_parse(user, msg, self.channel_parsed, user_type, "stats") != False:
+			return	
+			
+		if self.channel_stats_parse(user, msg, self.channel_parsed, user_type) != False:
 			return	
 			
 		if self.subs_parse(user, msg, self.channel_parsed, user_type) != False:
@@ -3585,7 +3612,7 @@ class TwitchBot(irc.IRCClient, object):
 
 	def write(self, msg):
 		'''Send message to channel and log it'''
-		self.msg(self.channel, msg)
+		self.msg(self.channel, msg.encode("utf-8"))
 		logging.info("{}: {}".format(self.nickname, msg))
 		
 class BotFactory(protocol.ClientFactory, object):
@@ -3635,32 +3662,7 @@ class TwitchWhisperBot(irc.IRCClient, object):
 		else:
 			return False
 	
-	def main_parse(self, user, msg):
 	
-		if self.test_parse(user, msg) != False:
-			return
-			
-		if self.ball_parse(user, msg, self.channel_parsed) != False:
-			return
-			
-		if self.uptime_parse(user, msg, self.channel_parsed) != False:
-			return
-			
-		if self.general_channel_stats_parse(user, msg, self.channel_parsed, "chatters") != False:
-			return
-			
-		if self.general_channel_stats_parse(user, msg, self.channel_parsed, "viewers") != False:
-			return
-			
-		if self.general_channel_stats_parse(user, msg, self.channel_parsed, "views") != False:
-			return
-			
-		if self.general_channel_stats_parse(user, msg, self.channel_parsed, "followers") != False:
-			return	
-			
-		'''if self.emote_stats_parse(user, msg, self.channel_parsed) != False:
-			return'''
-		
 	def ball_parse(self, user, msg, channel_parsed):
 		#8ball
 		#adding in deleting/adding/clearing of values
@@ -3740,12 +3742,33 @@ class TwitchWhisperBot(irc.IRCClient, object):
 					elif stat_str == "views":
 						send_str = "There are currently %s views in %s channel." % (stat_count, stat_channel)
 					elif stat_str == "followers":
-						send_str = "%s channel has %s followers." % (stat_channel, stat_count)
+						send_str = "%s channel has %s followers." % (stat_channel.capitalize(), stat_count)
 				else:
 					send_str = "%s is not an active channel." % msg_arr[1]
 			else:
 				send_str = "Usage: \"%s <channel>\"" % find_stat_str
 				
+			whisper(user, send_str)
+		else:
+			return False
+		
+	def channel_stats_parse(self, user, msg, channel_parsed):
+		chan_stats_str = "!chanstats"
+		if in_front(chan_stats_str, msg):
+			msg_arr = msg.split(" ")
+			if len(msg_arr) > 1:
+				stat_data = get_json_stream(msg_arr[1].lower().strip())
+				stat_data = stat_data["streams"]
+				if stat_data:
+					channel_game = stat_data[0]["game"]
+					if channel_game:
+						send_str = "%s is playing %s for %s viewers." % (msg_arr[1].capitalize(), channel_game, stat_data[0]["viewers"])
+					else:
+						send_str = "%s is not playing a game, however there are %s viewers" % (msg_arr[1].capitalize(), stat_data[0]["viewers"])
+				else:
+					send_str = "%s is not an active channel." % msg_arr[1].capitalize()
+			else:
+				send_str = "Usage: !chanstats <channel>"
 			whisper(user, send_str)
 		else:
 			return False
@@ -3815,7 +3838,34 @@ class TwitchWhisperBot(irc.IRCClient, object):
 		else:
 			return False
 	'''
+	def main_parse(self, user, msg):
 	
+		if self.test_parse(user, msg) != False:
+			return
+			
+		if self.ball_parse(user, msg, self.channel_parsed) != False:
+			return
+			
+		if self.uptime_parse(user, msg, self.channel_parsed) != False:
+			return
+			
+		if self.general_channel_stats_parse(user, msg, self.channel_parsed, "chatters") != False:
+			return
+			
+		if self.general_channel_stats_parse(user, msg, self.channel_parsed, "viewers") != False:
+			return
+			
+		if self.general_channel_stats_parse(user, msg, self.channel_parsed, "views") != False:
+			return
+			
+		if self.general_channel_stats_parse(user, msg, self.channel_parsed, "followers") != False:
+			return	
+		
+		if self.channel_stats_parse(user, msg, self.channel_parsed) != False:
+			return	
+		'''if self.emote_stats_parse(user, msg, self.channel_parsed) != False:
+			return'''
+		
 	def whisper_check(self):
 		#print whisper_msg, whisper_user
 		
