@@ -53,13 +53,11 @@ log/dict/array of recent commands? <-doubt this would actually help with an undo
 	do similar thing to moobot, have a chatbox of the commands said and run, without other misc messages
 different levels of authority?
 tecsbot moderator group?
-when put online it will greet the first(?) viewer and followr on the list
-more advanced !test results
-how to find zalgo symbols?
+more advanced !test results?
 figure out what to do with the other spamerino things
-break out of if statement chain when there is a command found <-- may already be fixed, may bring up 2 errors on very rare occurences
 excludes for "regulars" and subs
 offtime - time stream has been offline
+!countdown - display time left [title: time left]
 the minimum number of symbols should be disabled by default
 link our access_token html file and this file 
 	this is going to be completely different most likely when we do this on a server, so for now we are just doing a text file edit
@@ -68,10 +66,7 @@ need to have command to check if user is subscribed to channel
 	!subscribed /!subbed <user>
 just a note: better to try and open file and catch exception than to check if isfile
 the bad file descriptor is apparently related to the self. variables<--so you know why it's happening if it does happen again
-make it so capitalization doesnt matter on several things(i.e. autoreply) option
-for the chat integration of autoreplies, we can stop the user from inputting ":" into either the phrase or the reply,
-	or we can allow it but only allow them to delete by using the phrase of the pair, since we cannot have both in this situation
-	however this can be fine in the GUI
+make it so capitalization doesnt matter on several things(i.e. autoreply) option?
 make an option to let bot respond to it's own replies to autoreplies? Would be funny
 use round() wherever needed
 use enumerate wherever needed
@@ -79,25 +74,19 @@ point system for watching stream/chatting/etc
 	more points -> greater chance to win prizes/raffles/etcidk
 !x delete 21, 1, 5 <--- multiple deleting possibility <--- can we make a function for deleting?
 allow streamer to choose what to let mods do?<--- could work with level system
-!followers
 analytic for messages and emotes and shiznizzle
 when adding/removing ban emotes for the special emotes(o_O, O_o, etc), it currently will bulk remove/add them. 
 	In the GUI, we want to have a checkbox for "remove all variants of <input emote text>(emote picture)?" that if checked will do as did normally, if unchecked then will do one at a time.
 1 second between requests is recommended
 replace as many api requests as possible
-add in !roll like in dota 3 
 add in slot machine, make it emoticons  http://www.phantombot.net/threads/slot-machine-beta.537/
 add in lottery
 !clever <user> to troll user
-!math command and all the others here: https://github.com/memanlolz/Twitch_Bot/blob/master/src/com/yofungate/ircBot/Main.java
-arguments for autoreplies and cusotm commands and etc
 add !leave and !join commands (and !rejoin)
 make stats for all words instead of just emotes
 https://apis.rtainc.co/twitchbot/status?user=Darkelement75 custom api link
 	http://deepbot.tv/wiki/Custom+Commands
 should we deprecate ban emotes if we won't be distincting between emotes and words in the stats future?
-!stats/!chanstats <channel>	
-add in default autoreplies and commands for examples	
 argument for mod requirement custom commands autoreplies
 	allow it for already existing commands, maybe edit in GUI
 	allow it to be input for custom and autoreply commands
@@ -105,18 +94,12 @@ execute commands with streamer capabilities
 http://deepbot.deep.sg/wiki/Bot+Commands
 @customapi@[api link] where customapi is a variable that represents the data on the api link, ie how nightbot has uptime api link
 	use more try except/catch 
-apparently there are a few specific characters that zalgo text needs
-we can put the large num of variables in another file and import if necessary
 oauth_on variable
 !time to print current time
 need to either figure out a way to whisper the /mods response or implement this when there is a new way to get the mods of a room
-dont let it time out mods unless it can send messages on behalf of streamer?
-seriously need a way to get the /mods list so that we can know if a user is a mod by the /mods list 
-	Get /mods response loudly when doing !mods
-	Get /mods silently when doing !purge and checking if is a mod
-need to check for if data when doing viewers for the current channel
-handle if user is not playing when doing !game
-do welcome back if they have been here before, and only the original message for the others
+dont let it time out mods unless it can send messages on behalf of streamer
+make link whitelist also look for false positives? i.e. dot com
+remember to update the default command list, the README, and the sets
 """
 '''misc
  function loadEmotes() { $.getJSON("https://api.betterttv.net/emotes").done(function(data) { $emotes.text(''); parseEmotes(data.emotes); }).fail(function() { $('#emote').text("Error loading emotes.."); }); }
@@ -180,6 +163,7 @@ from twisted.internet.task import LoopingCall
 import logging
 import calendar
 import traceback
+from sympy.solvers import solve#!math
 
 def get_json_servers():
 	url = "http://tmi.twitch.tv/servers?cluster=group"
@@ -256,7 +240,7 @@ def create_count_dict(emote_arr):
 		dict[emote].append(0)
 	return dict
 	
-def update_count_dict(count_dict, emote_arr):
+def update_count_dict(count_dict, emote_arr):#can we deprecate this?
 	#remove emotes that were removed, add new ones
 	for emote in emote_arr:
 		if emote not in count_dict:#if emote is not yet added
@@ -731,12 +715,20 @@ def simplify_num(num):
 
 def prettify_num(num):
 	if len(str(float(num))) / 3 > 1:
+		if float(num) < 0:#so it doesn't screw up on the negative sign
+			num = num * -1
+			num_negative = True
+			
 		num = list(reversed(list(str(num))))#converts from int into reversed list
 		for num_index in range(len(num)):#go through indexes of reversed list
 			if num_index != len(num) - 1:#if not last element
 				if (num_index + 1) % 3 == 0:#
 					num[num_index] = "," + num[num_index]
-		return "".join(list(reversed(num)))#converts from reversed list into int
+		
+		num = "".join(list(reversed(num)))#converts from reversed list into int
+		if num_negative:
+			num = "-" + num
+		return num
 	else:
 		return num
 
@@ -777,7 +769,28 @@ def trim_permit_arr(permit_arr, permit_high_user, permit_high_type, permit_high_
 						del permit_arr[len(permit_arr)-1]
 						break
 	return permit_arr		
-	
+
+def get_raw_general_stats(channel_parsed, stat_str):
+	if stat_str == "chatters":
+		stat_data = get_json_chatters(channel_parsed.lower().strip())
+		stat_count = stat_data["chatter_count"]
+	elif stat_str == "viewers":
+		stat_data = get_json_stream(channel_parsed.lower().strip())
+		stat_count = stat_data["streams"]
+	elif stat_str == "views":
+		stat_data = get_json_views_follows(channel_parsed.lower().strip())
+		stat_count = stat_data["views"]
+	elif stat_str == "followers":
+		stat_data = get_json_views_follows(channel_parsed.lower().strip())
+		stat_count = stat_data["followers"]
+		
+	if stat_count:
+		if stat_str == "viewers":
+			stat_count = stat_count[0]["viewers"]
+		return stat_count
+	else:
+		return '0'
+		
 class TwitchBot(irc.IRCClient, object):
 
 	def __init__(self, channel):#for now only channel
@@ -799,11 +812,12 @@ class TwitchBot(irc.IRCClient, object):
 		self.fake_purge_antispam_on = True
 		self.skincode_antispam_on = True
 		self.long_msg_antispam_on = True
-		self.zalgo_antispam_on = True
 		self.symbol_antispam_on = True
 		self.link_antispam_on = True
 		self.long_word_antispam_on = True
 		self.me_antispam_on = True
+		self.ip_antispam_on = True
+		
 		self.ban_emote_on = True
 		self.emote_stats_on = True
 		self.repeat_on = True
@@ -832,13 +846,13 @@ class TwitchBot(irc.IRCClient, object):
 		self.fake_purge_warn_arr = []
 		self.skincode_warn_arr = []
 		self.long_msg_warn_arr = []
-		self.zalgo_warn_arr = []
 		#block_warn_arr = []
 		self.symbol_warn_arr = []
 		self.link_warn_arr = []
 		self.spam_warn_arr = []
 		self.long_word_warn_arr = []
 		self.me_warn_arr = []
+		self.ip_warn_arr = []
 		
 		self.ban_emote_warn_arr = []
 		self.banphrase_warn_arr = []
@@ -848,28 +862,30 @@ class TwitchBot(irc.IRCClient, object):
 		self.vote_dict = {}
 		self.vote_total = 0
 		
-		#################3needs to be empty
-		self.topic = 'ayy lmao'
+		#################needs to be empty
+		self.topic = 'Any ideas and questions welcome!'
 		self.game = ''
 		self.title = ''
 		
 		stream_data = get_json_stream(self.channel_parsed)["streams"]
 		if stream_data:
 			self.game = stream_data[0]["game"]
+			self.title = stream_data[0]["channel"]["status"]
 		
 			
 		self.rol_chance = .5
 		self.rol_timeout = 5 #seconds
 		
 		self.purge_duration = 5
-		self.viewer_check_interval = 60
+		self.last_timeout_time = 0
+		self.timeout_interval = 3#time to wait before sending a timeout unsuccessful cannot time out mods message
+		
 		self.follower_check_interval = 300#5 min
 		self.stream_status_check_interval = 300#5 min
 		
 		self.chatter_arr = []
 		self.lurker_arr = []
 		self.stream_status = False
-		self.welcome_msg = "Welcome to the channel! The current topic is \"%s\""  % self.topic
 		
 		self.default_permit_time = 30#seconds
 		self.default_permit_msg_count = 10#msgs
@@ -880,22 +896,29 @@ class TwitchBot(irc.IRCClient, object):
 		#self.emote_arr.extend(self.special_emote_arr)
 		self.count_dict = create_count_dict(self.emote_arr)
 		
+		self.reply_args_arr = ["{*USER*}", "{*TO_USER*}", "{*GAME*}", "{*STATUS*}", "{*TOPIC*}", "{*VIEWERS*}", "{*CHATTERS*}", "{*VIEWS*}", "{*FOLLOWERS*}"]
 		self.default_cmd_arr = ['!link whitelist', '!permit', '!banphrase', '!autoreply', '!set', '!vote', '!raffle', '!roulette', '!8ball', '!uptime', '!chatters', '!viewers', '!subs', '!subscribers', '!commercial', '!ban emote', '!repeat']
 		
 		self.follower_arr = []
 		self.viewer_arr = []
+		self.perm_chatter_arr = []#so that we say welcome back if they are in this, and welcome if it is first time
 		self.follower_arr, new_follower_arr = get_new_followers(self.follower_arr, self.channel_parsed, self)
 		self.viewer_arr, new_viewer_arr = get_new_viewers(self.viewer_arr, self.channel_parsed, self)
+		self.perm_chatter_arr.extend(new_viewer_arr)
 		
-		self.link_regex = re.compile(ur'^(?:https?:\/\/)?\w+(?:\.\w{2,})+$\b', re.MULTILINE)
+		#Regexes
+		self.link_regex = re.compile(ur'^(?:https?:\/\/)?\w+(?:\.\w{2,})+(?:\/\S+)*$', re.MULTILINE)
+		self.ip_regex= re.compile(ur'^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$\b', re.MULTILINE)
+		
+		#Default additions to autoreply and command arrays		
+		self.cmd_arr.append(["!slap", "{*USER*} slaps {*TO_USER*} around a bit with a large trout."])
+		self.cmd_arr.append(["!shoutout", "Check out twitch.tv/{*TO_USER*} and follow them!"
+		
 		check_loop_repeats = LoopingCall(self.repeat_check)
 		check_loop_repeats.start(0.003)
 		
-		check_loop_viewers = LoopingCall(self.viewer_check)
-		check_loop_viewers.start(self.viewer_check_interval)
-		
 		check_loop_followers= LoopingCall(self.follower_check)
-		check_loop_followers.start(self.viewer_check_interval)
+		check_loop_followers.start(self.follower_check_interval)
 		
 		check_loop_stream_status = LoopingCall(self.stream_status_check)
 		check_loop_stream_status.start(self.stream_status_check_interval)
@@ -1423,21 +1446,10 @@ class TwitchBot(irc.IRCClient, object):
 		long_msg_timeout_msg = "excessively long messages"
 		long_msg_timeout_duration = 1
 		
-		zalgo_warn_duration = 1
-		zalgo_warn_cooldown = 30
-		zalgo_timeout_msg = "zalgo symbols"
-		zalgo_timeout_duration = 1
-		
 		symbol_warn_duration = 1
 		symbol_warn_cooldown = 30
 		symbol_timeout_msg = "excessive use of symbols"
 		symbol_timeout_duration = 1
-		
-		me_msg = "/me"
-		me_warn_duration = 1
-		me_warn_cooldown = 30
-		me_timeout_msg = "usage of /me"
-		me_timeout_duration = 1
 		
 		long_word_warn_duration = 1
 		long_word_warn_cooldown = 30
@@ -1456,12 +1468,18 @@ class TwitchBot(irc.IRCClient, object):
 		spam_timeout_msg = "spam"
 		spam_timeout_duration = 1
 		
+		me_msg = "/me"
+		me_warn_duration = 1
+		me_warn_cooldown = 30
+		me_timeout_msg = "usage of /me"
+		me_timeout_duration = 1
+		
+		ip_warn_duration = 1
+		ip_warn_cooldown = 30
+		ip_timeout_msg = "IP Addresses"
+		ip_timeout_duration = 1
 		
 		#add time, user, and message to array of 30second old messages
-		'''perma permit for tecsbot avoids this
-		if len(self.permit_arr) != 0:
-			for permit_pair in self.permit_arr:
-				if user not in '''
 		if self.antispam_on:
 			for permit_pair in self.permit_arr:
 				if user.capitalize().rstrip() in permit_pair:
@@ -1539,19 +1557,7 @@ class TwitchBot(irc.IRCClient, object):
 						if len(msg) > msg_length_max:
 							self.long_msg_warn_arr = warn(user, msg, channel_parsed, self, self.long_msg_warn_arr, long_msg_warn_duration, long_msg_warn_cooldown, long_msg_timeout_msg, long_msg_timeout_duration)
 							return True
-					#zalgo symbols
-					#Very likely this will take a lot of time, find more efficient method if so
-					if self.zalgo_antispam_on:
-						for char in msg:
-							if isinstance(char, unicode):
-								print char
-								print "HOLY SHIT A ZALGO HAPPENED"
-								full_exit()
-								if unicodedata.combining(char) != 0:
-									#obviously will remove this when the damn thing works
-									sys.exit("zalgo detected")
-									self.zalgo_warn_arr = warn(user, msg, channel_parsed, self, self.zalgo_warn_arr, zalgo_warn_duration, zalgo_warn_cooldown, zalgo_timeout_msg, zalgo_timeout_duration)
-									return True
+					
 					#block symbols
 					
 					#dongers
@@ -1577,7 +1583,7 @@ class TwitchBot(irc.IRCClient, object):
 							if re.search(self.link_regex, word):#if is link according to our regex
 								for link_whitelist in self.link_whitelist_arr:
 									if "*" in link_whitelist:
-										link_whitelist_wcard = link_whitelist_wcard.split("*")
+										link_whitelist_wcard = link_whitelist.split("*")
 										#this way if there is any part that is not in the word, it will move on
 										#however if they are all in the word, it will do the else statement
 										for link_wcard_part in link_whitelist_wcard:
@@ -1607,6 +1613,14 @@ class TwitchBot(irc.IRCClient, object):
 						if in_front(me_msg, msg):
 							self.me_warn_arr = warn(user, msg, channel_parsed, self, self.me_warn_arr, me_warn_duration, me_warn_cooldown, me_timeout_msg, me_timeout_duration)
 							return True
+						
+					#ip addresses
+					if self.ip_antispam_on:
+						for word in msg.split(" "):
+							#we need to determine links for this sole reason
+							if re.search(self.ip_regex, word):#if is ip address according to our regex
+								self.ip_warn_arr = warn(user, msg, channel_parsed, self, self.ip_warn_arr, ip_warn_duration, ip_warn_cooldown, ip_timeout_msg, ip_timeout_duration)
+								return True
 					'''the complicated general antispam that moobot offers
 					if len(msg) > min_spam_chars:
 						#idk how to go about making this without killing speed of program		
@@ -1718,7 +1732,6 @@ class TwitchBot(irc.IRCClient, object):
 			
 	def autoreply_parse(self, user, msg, channel_parsed, user_type):
 		#autoreplies 
-		
 		autoreply_str = "!autoreply"
 		autoreply_add_str = "!autoreply add"
 		autoreply_del_str = "!autoreply delete"
@@ -1734,7 +1747,7 @@ class TwitchBot(irc.IRCClient, object):
 						msg_arr = msg.split(" ", 2)
 						if len(msg_arr) == 3:
 							if ":" in msg_arr[2]:
-								ar_msg_arr = msg_arr[2].split(":")
+								ar_msg_arr = msg_arr[2].split(":", 1)
 								if len(ar_msg_arr) == 2:
 									ar_phrase = ar_msg_arr[0].rstrip().lstrip()
 									ar_reply = ar_msg_arr[1].rstrip().lstrip()
@@ -1778,6 +1791,7 @@ class TwitchBot(irc.IRCClient, object):
 						if len(msg_arr) == 3:
 							ar_phrase = msg_arr[2]
 							if is_num(ar_phrase):
+								ar_phrase = int(ar_phrase)
 								if ar_phrase > 0 and ar_phrase <= len(self.ar_arr):
 									send_str = "Autoreply %s:%s removed at index %s." % (self.ar_arr[int(ar_phrase)-1][0], self.ar_arr[int(ar_phrase)-1][1], ar_phrase)
 									#should be the same index as the pair, after all.
@@ -1849,13 +1863,45 @@ class TwitchBot(irc.IRCClient, object):
 			else:			
 				if self.autoreply_on:
 					for ar_pair in self.ar_arr:
-						if ar_pair[0] == msg:
+						#if ar_pair[0] == msg:
+						try:
+							phrase_index = msg.index(ar_pair[0])
+							#if msg did contain the autoreply phrase
 							reply = ar_pair[1]
+							for word in reply.split():
+								if word in self.reply_args_arr:
+									if word == "{*USER*}":
+										reply = reply.replace("{*USER*}", user)
+									elif word == "{*TO_USER*}":
+										to_user_part = msg[phrase_index+len(ar_pair[0]):len(msg)]#all the elements after the autoreply
+										reply_to_user = to_user_part.split()[0]#the first word after the autoreply, should be the to user
+										reply = reply.replace("{*TO_USER*}", str(reply_to_user))
+									elif word == "{*GAME*}":
+										reply = reply.replace("{*GAME*}", self.game)
+									elif word == "{*STATUS*}":
+										reply = reply.replace("{*STATUS*}", self.title)
+									elif word == "{*TOPIC*}":
+										reply = reply.replace("{*TOPIC*}", self.topic)
+									elif word == "{*VIEWERS*}":
+										viewer_count = get_raw_general_stats(channel_parsed, 'viewers')
+										reply = reply.replace("{*VIEWERS*}", str(viewer_count))
+									elif word == "{*CHATTERS*}":
+										chatter_count = get_raw_general_stats(channel_parsed, 'chatters')
+										reply = reply.replace("{*CHATTERS*}", str(chatter_count))
+									elif word == "{*VIEWS*}":
+										view_count = get_raw_general_stats(channel_parsed, 'views')
+										reply = reply.replace("{*VIEWS*}", str(view_count))
+									elif word == "{*FOLLOWERS*}":
+										follower_count = get_raw_general_stats(channel_parsed, 'followers')
+										reply = reply.replace("{*FOLLOWERS*}", str(follower_count))
 							if in_front("/w", reply) or in_front(".w", reply):
 								whisper_response(reply)
 							else:
 								self.write(reply)
 							return False
+						except:
+							#msg did not contain the autoreply
+							pass
 				return False
 		else:
 			return False
@@ -1877,7 +1923,6 @@ class TwitchBot(irc.IRCClient, object):
 		set_fake_purge_antispam_str = "!set fake purge antispam"
 		set_skincode_antispam_str = "!set skincode antispam"
 		set_long_msg_antispam_str = "!set long message antispam"
-		set_zalgo_antispam_str = "!set zalgo antispam"
 		set_symbol_antispam_str = "!set symbol antispam"
 		set_link_antispam_str = "!set link antispam"
 		set_long_word_antispam_str = "!set long word antispam"
@@ -1933,10 +1978,6 @@ class TwitchBot(irc.IRCClient, object):
 					#skincode antispam
 					elif in_front(set_skincode_antispam_str, msg):
 						self.skincode_antispam_on = set_value(self.skincode_antispam_on, "skincode antispam", msg_arr, irc)
-					
-					#zalgo antispam
-					elif in_front(set_zalgo_antispam_str, msg):
-						self.zalgo_antispam_on = set_value(self.zalgo_antispam_on, "zalgo antispam", msg_arr, irc)
 					
 					#symbol antispam
 					elif in_front(set_symbol_antispam_str, msg):
@@ -3007,7 +3048,7 @@ class TwitchBot(irc.IRCClient, object):
 						msg_arr = msg.split(" ", 2)
 						if len(msg_arr) == 3:
 							if ":" in msg_arr[2] and in_front("!", msg_arr[2]):
-								cmd_msg_arr = msg_arr[2].split(":")
+								cmd_msg_arr = msg_arr[2].split(":", 1)
 								if len(cmd_msg_arr) == 2:
 									cmd_phrase = cmd_msg_arr[0].rstrip().lstrip()
 									cmd_reply = cmd_msg_arr[1].rstrip().lstrip()
@@ -3122,19 +3163,51 @@ class TwitchBot(irc.IRCClient, object):
 				################################################################################
 				####THIS NEEDS TO NOT BE IS MOD BUT DEPEND ON THE LEVEL PARAMETER OF THE COMMAND
 				################################################################################
-				for cmd_pair in self.cmd_arr:
-					if cmd_pair[0] == msg:
-						if is_mod(user, channel_parsed, user_type):
-							reply = cmd_pair[1]
+				if self.cmd_on:
+					for cmd_pair in self.cmd_arr:
+						try:
+							cmd_index = msg.index(cmd_pair[0])
+							#if msg did contain the custom command
+							if is_mod(user, channel_parsed, user_type):
+								reply = cmd_pair[1]
+								for word in reply.split():
+									if word in self.reply_args_arr:
+										if word == "{*USER*}":
+											reply = reply.replace("{*USER*}", user)
+										elif word == "{*TO_USER*}":
+											to_user_part = msg[cmd_index+len(cmd_pair[0]):len(msg)]#all the elements after the autoreply
+											reply_to_user = to_user_part.split()[0]#the first word after the autoreply, should be the to user
+											reply = reply.replace("{*TO_USER*}", str(reply_to_user))
+										elif word == "{*GAME*}":
+											reply = reply.replace("{*GAME*}", self.game)
+										elif word == "{*STATUS*}":
+											reply = reply.replace("{*STATUS*}", self.title)
+										elif word == "{*TOPIC*}":
+											reply = reply.replace("{*TOPIC*}", self.topic)
+										elif word == "{*VIEWERS*}":
+											viewer_count = get_raw_general_stats(channel_parsed, 'viewers')
+											reply = reply.replace("{*VIEWERS*}", str(viewer_count))
+										elif word == "{*CHATTERS*}":
+											chatter_count = get_raw_general_stats(channel_parsed, 'chatters')
+											reply = reply.replace("{*CHATTERS*}", str(chatter_count))
+										elif word == "{*VIEWS*}":
+											view_count = get_raw_general_stats(channel_parsed, 'views')
+											reply = reply.replace("{*VIEWS*}", str(view_count))
+										elif word == "{*FOLLOWERS*}":
+											follower_count = get_raw_general_stats(channel_parsed, 'followers')
+											reply = reply.replace("{*FOLLOWERS*}", str(follower_count))
+							else:
+								send_str = "You have to be a mod to use custom commands." 
+								whisper(user, send_str)
+								return
 							if in_front("/w", reply) or in_front(".w", reply):
 								whisper_response(reply)
 							else:
 								self.write(reply)
 							return False
-						else:
-							send_str = "You have to be a mod to use custom commands." 
-							whisper(user, send_str)
-							return
+						except:
+							#msg did not contain the autoreply
+							pass
 				return False
 		else:
 			return False
@@ -3190,19 +3263,6 @@ class TwitchBot(irc.IRCClient, object):
 					repeat_set[0] = current_time#update the time
 					self.write(repeat_cmd)
 					self.main_parse(self.nickname, repeat_cmd, 'mod')
-					
-	def viewer_check(self):
-		if self.topic_on and self.stream_status:
-			#check for new viewers and whisper
-			self.viewer_arr, new_viewer_arr = get_new_viewers(self.viewer_arr, self.channel_parsed, self)
-			
-			if len(new_viewer_arr) > 0 and self.topic != "":
-				send_str = "Welcome to the channel! The current topic is \"%s\""  % self.topic
-				for new_viewer in new_viewer_arr:
-					if new_viewer not in self.chatter_arr:
-						self.lurker_arr.append(new_viewer.encode("utf-8"))
-					else:
-						whisper(new_viewer, send_str.encode("utf-8"))
 						
 	def follower_check(self):
 		self.follower_arr, new_follower_arr = get_new_followers(self.follower_arr, self.channel_parsed, self)
@@ -3259,7 +3319,7 @@ class TwitchBot(irc.IRCClient, object):
 					send_str = "You have to be the streamer to change the channel title."
 					whisper(user, send_str)
 			else:
-				if self.title != "":
+				if self.title:
 					send_str = "The current title is: \"%s\"" % self.title.encode("utf-8")
 					if is_mod(user, channel_parsed, user_type):
 						self.write(send_str)
@@ -3289,7 +3349,10 @@ class TwitchBot(irc.IRCClient, object):
 					whisper(user, send_str)
 			else:
 				if self.game != "":
-					send_str = "The current game is: \"%s\"" % self.game.encode("utf-8")
+					if self.game == False:
+						send_str = "%s is not playing a game." % channel_parsed.capitalize()
+					else:
+						send_str = "The current game is: \"%s\"" % self.game.encode("utf-8")
 					if is_mod(user, channel_parsed, user_type):
 						self.write(send_str)
 					else:
@@ -3297,6 +3360,8 @@ class TwitchBot(irc.IRCClient, object):
 				else:	
 					channel_data = get_json_stream(channel_parsed)
 					self.game = channel_data["streams"][0]["game"]
+					if not self.game:
+						self.game = False
 		else:
 			return False
 			
@@ -3334,11 +3399,9 @@ class TwitchBot(irc.IRCClient, object):
 					purge_user = msg_arr[1]
 					if is_streamer(purge_user, channel_parsed):
 						send_str = "I cannot purge the streamer."
-					elif is_purge_mod(purge_user, channel_parsed):
-						send_str = "I cannot purge other moderators."
 					else:
 						timeout(purge_user, self, self.purge_duration)
-						send_str = "User %s has been purged." % purge_user
+						return
 				elif len(msg_arr) == 1:
 					send_str = "Time the user out for a short duration, deleting their messages. Syntax and more information can be found in the documentation."
 					whisper(user, send_str)
@@ -3354,6 +3417,82 @@ class TwitchBot(irc.IRCClient, object):
 			self.write(send_str)
 		else:
 			return False
+	
+	def math_parse(self, user, msg, channel_parsed, user_type):
+		#math - print if mod whisper if not
+		math_str = "!math"
+		if in_front(math_str, msg):
+			msg_arr = msg.split(" ")
+			if len(msg_arr) == 1:
+				send_str = "Usage: !math <equation>" 
+				whisper(user, send_str)
+			elif len(msg_arr) > 1:
+				equation = msg_arr[1]
+				try:
+					send_str = str(eval(equation))
+				except:
+					send_str = "Unable to solve equation."
+					whisper(user, send_str)
+					return
+			self.write(send_str)
+		else:
+			return False
+
+	def roll_parse(self, user, msg, channel_parsed, user_type):
+		#roll - return a random number in the given range
+		roll_str = "!roll"
+		if in_front(roll_str, msg):
+			msg_arr = msg.split(" ", 1)
+			if len(msg_arr) == 1:
+				send_str = "Usage: !roll <lower limit(default: 0)>, <upper limit>" 
+				whisper(user, send_str)
+				return
+			elif len(msg_arr) > 1:
+				range_lims = msg_arr[1].split(",")
+				if len(range_lims) > 1:
+					roll_lower_lim = range_lims[0]
+					roll_upper_lim = range_lims[1]
+					if not is_num(roll_lower_lim) or not is_num(roll_upper_lim):
+						send_str = "!Usage: !roll <lower limit(default: 0)>, <upper limit>"
+						whisper(user, send_str)
+						return
+				else:
+					if not is_num(msg_arr[1]):
+						send_str = "!Usage: !roll <lower limit(default: 0)>, <upper limit>"
+						whisper(user, send_str)
+						return
+					if int(float(msg_arr[1])) < 0:
+						roll_lower_lim = msg_arr[1]
+						roll_upper_lim = 0
+					else:
+						roll_lower_lim = 0
+						roll_upper_lim = msg_arr[1]
+				#get the random number
+				roll_lower_lim = int(float(roll_lower_lim))
+				roll_upper_lim = int(float(roll_upper_lim))
+				roll_num = random.randint(roll_lower_lim, roll_upper_lim)
+				send_str = "%s: %s" % (user, prettify_num(roll_num))
+				if not is_mod(user, channel_parsed, user_type):
+					whisper(user, send_str)
+					return
+			self.write(send_str)
+		else:
+			return False
+	
+	def coin_parse(self, user, msg, channel_parsed, user_type):
+		#coin - return heads or tails
+		coin_str = "!coin"
+		if in_front(coin_str, msg):
+			if random.randint(0, 1) == 0:
+				send_str = "%s: Heads" % user
+			else:
+				send_str = "%s: Tails" % user
+			if not is_mod(user, channel_parsed, user_type):
+				whisper(user, send_str)
+				return
+			self.write(send_str)
+		else:
+			return 
 			
 	def main_parse(self, user, msg, user_type):
 		comm_len_arr = [30, 60, 90, 120, 150, 180]
@@ -3367,10 +3506,19 @@ class TwitchBot(irc.IRCClient, object):
 		current_time = time.time()
 		#[current_msg_count, user, msg_count, type]
 		#[current_time, user, permit_time, type]
+		
+		###new viewers/chatters
+		#needs to be reassigned every time so that we keep the topic up to date
+		self.welcome_msg = "Welcome to the channel! The current topic is \"%s\""  % self.topic
+		self.welcome_back_msg = "Welcome back! The current topic is \"%s\""  % self.topic
 		if user not in self.chatter_arr:#so that we don't say "Welcome!" until we know they aren't a lurker
 			self.chatter_arr.append(user)
-			if user in self.lurker_arr:#if they were a lurker, then welcome them now
-				whisper(user, self.welcome_msg)
+			#if user in self.lurker_arr:#if they were a lurker, then welcome them now
+			if not is_streamer(user, self.channel_parsed):
+				if user in self.perm_chatter_arr:
+					whisper(user, self.welcome_back_msg)
+				else:
+					whisper(user, self.welcome_msg)
 				
 		for permit_pair in self.permit_arr:
 			if permit_pair[3] == "message":
@@ -3500,18 +3648,17 @@ class TwitchBot(irc.IRCClient, object):
 		
 		if self.purge_parse(user, msg, self.channel_parsed, user_type) != False:
 			return
-		#welcome newcomers - seems to be working with viewers and followers atm - need to figure out subs however
-		#NOTE: TEMPORARILY DISABLED BECAUSE IT IS ANNOYING AS FUCK WHEN NOT PERMANENTLY ONLINE
-		#new viewers
-			#need to auth for sub list
-		'''if user not in viewer_arr:
-			#add to viewer_arr and then welcome them
-			viewer_arr.append(user)
-			send_str = "Hello newcomer %s, welcome to %s's self.channel!" % (user, self.channel_parsed)
-			self.write(send_str)'''
-		#new followers - currently disabled for the same reason the above one is
-		#self.follower_arr = new_follower(self.follower_arr, self.channel_parsed, self)#will return False if there are none/service unavailable I suppose
+
+		#Until we find a more dependable solution
+		#if self.math_parse(user, msg, self.channel_parsed, user_type) != False:
+			#return
+			
+		if self.roll_parse(user, msg, self.channel_parsed, user_type) != False:
+			return
 		
+		if self.coin_parse(user, msg, self.channel_parsed, user_type) != False:
+			return
+			
 	def signedOn(self):
 		logging.warning("Signed on as {}".format(self.nickname))
 
@@ -3605,6 +3752,15 @@ class TwitchBot(irc.IRCClient, object):
 		if "msg-id" not in tags:
 			return
 		logging.warning(tags['msg-id'])
+		current_time = time.time()
+		if tags['msg-id'] == "bad_timeout_mod":
+			if current_time - self.last_timeout_time > self.timeout_interval:
+				self.last_timeout_time = current_time
+				self.write("Timeout unsuccessful, I cannot time out moderators without being the streamer.")
+		'''elif tags['msg-id'] == "timeout_success":
+			if current_time - self.last_timeout_time > self.timeout_interval:
+				self.last_timeout_time = current_time
+				self.write("Timeout successful.")'''#disabled because too many messages
 		#for /mods response
 		if args[0] == self.channel and "The moderators of this room are:" in args[1]:
 			args[1] += ", and %s." % self.channel.replace("#", "")
