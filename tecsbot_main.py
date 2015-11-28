@@ -41,8 +41,7 @@ hours til next strim? <--countdown command
 score of current game/tourney/bo3/etc
 song functionality
 sub notifications
-raffle -  expiration timer?
-commands for mods to change game or title or other(commercials?)
+raffle -  expiration timer? <-- we could let the countdowns do this
 social media info
 allow users to program question responses like ALICE? <-- interesting idea for a solo channel
 overall and per day -time user has watched stream
@@ -51,13 +50,12 @@ overrall and per day -messages of user, high score, etc
 check to make sure x!= '' is present in all the things
 log/dict/array of recent commands? <-doubt this would actually help with an undo command
 	do similar thing to moobot, have a chatbox of the commands said and run, without other misc messages
-different levels of authority?
+different levels of authority? 
 tecsbot moderator group?
 more advanced !test results?
 figure out what to do with the other spamerino things
 excludes for "regulars" and subs
 offtime - time stream has been offline
-!countdown - display time left [title: time left]
 the minimum number of symbols should be disabled by default
 link our access_token html file and this file 
 	this is going to be completely different most likely when we do this on a server, so for now we are just doing a text file edit
@@ -67,11 +65,15 @@ need to have command to check if user is subscribed to channel
 just a note: better to try and open file and catch exception than to check if isfile
 the bad file descriptor is apparently related to the self. variables<--so you know why it's happening if it does happen again
 make it so capitalization doesnt matter on several things(i.e. autoreply) option?
-make an option to let bot respond to it's own replies to autoreplies? Would be funny
+make an option to let bot respond to it's own replies to autoreplies? Would this be for all of them? i.e. countdown, repeat, autoreply as well, etrc
 use round() wherever needed
 use enumerate wherever needed
 point system for watching stream/chatting/etc
 	more points -> greater chance to win prizes/raffles/etcidk
+	when points added or subtracted then do point_change(self, point_num, user)
+		add user to self.user_points_arr if not in it already
+	we should do this as a dictionary actually
+	
 !x delete 21, 1, 5 <--- multiple deleting possibility <--- can we make a function for deleting?
 allow streamer to choose what to let mods do?<--- could work with level system
 analytic for messages and emotes and shiznizzle
@@ -79,8 +81,11 @@ when adding/removing ban emotes for the special emotes(o_O, O_o, etc), it curren
 	In the GUI, we want to have a checkbox for "remove all variants of <input emote text>(emote picture)?" that if checked will do as did normally, if unchecked then will do one at a time.
 1 second between requests is recommended
 replace as many api requests as possible
-add in slot machine, make it emoticons  http://www.phantombot.net/threads/slot-machine-beta.537/
-add in lottery
+time for level system:
+	streamer has all control, GUI settings as well as everything else
+	editor level = all settings other than gui
+	moderator = can they start things but not edit, or can they do neither?
+	
 !clever <user> to troll user
 add !leave and !join commands (and !rejoin)
 make stats for all words instead of just emotes
@@ -100,6 +105,22 @@ need to either figure out a way to whisper the /mods response or implement this 
 dont let it time out mods unless it can send messages on behalf of streamer
 make link whitelist also look for false positives? i.e. dot com
 remember to update the default command list, the README, and the sets
+should we allow setting on/off of stuff like uptime and topic?
+whisper mods list or whispers argument where mods can choose to have bot's responses whispered to them instead of printed
+default starting amount of points, make changeable just like all the others
+4 main things:
+	1. Song requests - website for streamer to use that bot is hooked up to, use the gui
+	2. Database setting storage
+	3. website and gui for the bot 
+		a. Allows settings input
+		b. Has connect with twitch button first
+input time out duration for banphrases?
+current_time = time.time() will not get fractions of a second, it will only get whole seconds
+	for now I don't want to implement this because why would you care so much about those fractions of a second
+	maybe we will make it loop every second in the future instead of 0.003, i dont fucking know i just know i dont want to 
+	do it right now
+for the lists - individualize em'
+check if link antispam first
 """
 '''misc
  function loadEmotes() { $.getJSON("https://api.betterttv.net/emotes").done(function(data) { $emotes.text(''); parseEmotes(data.emotes); }).fail(function() { $('#emote').text("Error loading emotes.."); }); }
@@ -150,7 +171,7 @@ Traceback (most recent call last):
 	for res in getaddrinfo(host, port, 0, SOCK_STREAM):
 IOError: [Errno socket error] [Errno 11004] getaddrinfo failed
 '''
-import socket #imports module allowing connection to IRCBRB
+import socket #imports module allowing connection to IRC
 import thread, threading #imports module allowing timing functions
 import sys, operator, time, urllib, json, math, os, random, unicodedata, requests, select
 from datetime import datetime, timedelta
@@ -163,6 +184,11 @@ from twisted.internet.task import LoopingCall
 import logging
 import calendar
 import traceback
+
+import sqlalchemy
+from sqlalchemy.engine import create_engine
+from sqlalchemy import text
+
 from sympy.solvers import solve#!math
 
 def get_json_servers():
@@ -305,7 +331,6 @@ def get_json_stream(channel_parsed):
 			return requests.get(url).json()
 		except Exception, err:
 			print Exception, err
-			traceback.print_exec()
 			
 def get_json_views_follows(channel_parsed):
 	url = "https://api.twitch.tv/kraken/channels/%s" % channel_parsed
@@ -790,7 +815,79 @@ def get_raw_general_stats(channel_parsed, stat_str):
 		return stat_count
 	else:
 		return '0'
+
+def point_change(self, user, points):
+	#if points != 0:#don't waste our time if it's 0 points#we actually remove this so that we tell them their new total of points and this may interfere with a custom setting
+	if self.point_system_on:
+		if user not in self.point_users:
+			self.point_users[user] = 0
+		self.point_users[user] += points
+
+def point_balance(self, user):
+	if user not in self.point_users:
+		return 0
+	else:
+		return self.point_users[user]
+
+def result_to_dict(res):
+	return [dict(row) for row in res]
+
+def get_len_table(self, table):
+	query = "SELECT COUNT(*) FROM %s" % table
+	res = result_to_dict(self.conn.execute(query))
+	len_table = res[0]["COUNT(*)"]
+	return len_table
+
+def check_duplicate(self, table, columns, values):
+	columns = "(" + ','.join(x for x in columns) + ")"
+	values = '(' + repr(values)[1:-1] + ')'
+	query = text("SELECT COUNT(*) FROM %s WHERE %s = `%s`" % (table, columns, values))
+	if result_to_dict(self.conn.execute(query)):
+		return True
+	else:
+		return False
 		
+def insert_data(self, table, columns, values):
+	columns = "(" + ','.join(x for x in columns) + ")"
+	values = '(' + repr(values)[1:-1] + ')'
+	query = text("INSERT INTO %s %s VALUES %s" % (table, columns, values)) 
+	self.conn.execute(query)
+##def update_8ball_table(self, type, 
+
+def delete_index_handler(self, table, index):
+	len_table = get_len_table(self, table)
+	if not index > 0 or not index <= len_table:
+		return False
+	query = "SELECT * FROM %s LIMIT %s" % (table, index)
+	result = result_to_dict(self.conn.execute(query))
+	if len(result) == index: #could be len -1 = delete_index -1 to be more readable but ehh
+		delete_row = result[len(result)-1]
+	else:
+		print "This shouldn't happen"
+		full_exit()
+	query = "DELETE FROM %s WHERE `index` = %s" % (table, delete_row["index"])
+	self.conn.execute(query)
+	return delete_row
+
+def delete_value_handler(self, table, column, value):
+	query = text("SELECT * FROM %s WHERE %s = '%s' LIMIT 1" % (table, column, value))
+	res = result_to_dict(self.conn.execute(query))
+	if res:
+		query = text("DELETE FROM %s WHERE %s = '%s' LIMIT 1" % (table, column, value))
+		self.conn.execute(query)
+		return res[0]
+	else:
+		return False
+	
+	
+def get_table(self, table):
+	query = "SELECT * FROM %s" % table
+	return result_to_dict(self.conn.execute(query))
+	
+def clear_table(self, table):
+	query = "DELETE FROM %s" % table
+	self.conn.execute(query)
+	
 class TwitchBot(irc.IRCClient, object):
 
 	def __init__(self, channel):#for now only channel
@@ -822,13 +919,26 @@ class TwitchBot(irc.IRCClient, object):
 		self.emote_stats_on = True
 		self.repeat_on = True
 		self.topic_on = True
+		self.purge_on = True
+		self.math_on = True
+		self.roll_on = True
+		self.coin_on = True
+		self.countdown_on = True
+		self.points_on = True
+		self.slots_on = True
+		self.point_system_on = True
 		
 		self.raffle_on = False
+		self.lottery_on = False
+		self.give_on = True
 		
 		self.vote_on = False
 		self.cmd_on = True
 		
 		self.raffle_users = []
+		self.lottery_users = []
+		self.raffle_point_value = 0
+		self.lottery_point_value = 0
 		
 		#self.vote_on = False
 		self.link_whitelist_arr = []
@@ -836,10 +946,9 @@ class TwitchBot(irc.IRCClient, object):
 		self.banphrase_arr = []
 		self.ar_arr = []
 		self.ban_emote_arr = []
-		self.cmd_dict = {}
 		self.emote_arr = []
 		self.cmd_arr = []
-		self.repeat_arr = []
+		self.countdown_arr = []
 		
 		self.caps_warn_arr = []
 		self.emote_warn_arr = []
@@ -884,7 +993,6 @@ class TwitchBot(irc.IRCClient, object):
 		self.stream_status_check_interval = 300#5 min
 		
 		self.chatter_arr = []
-		self.lurker_arr = []
 		self.stream_status = False
 		
 		self.default_permit_time = 30#seconds
@@ -897,7 +1005,7 @@ class TwitchBot(irc.IRCClient, object):
 		self.count_dict = create_count_dict(self.emote_arr)
 		
 		self.reply_args_arr = ["{*USER*}", "{*TO_USER*}", "{*GAME*}", "{*STATUS*}", "{*TOPIC*}", "{*VIEWERS*}", "{*CHATTERS*}", "{*VIEWS*}", "{*FOLLOWERS*}"]
-		self.default_cmd_arr = ['!link whitelist', '!permit', '!banphrase', '!autoreply', '!set', '!vote', '!raffle', '!roulette', '!8ball', '!uptime', '!chatters', '!viewers', '!subs', '!subscribers', '!commercial', '!ban emote', '!repeat']
+		self.default_cmd_arr = ['!link whitelist', '!permit', '!banphrase', '!autoreply', '!set', '!vote', '!raffle', '!roulette', '!8ball', '!uptime', '!chatters', '!viewers', '!subs', '!subscribers', '!commercial', '!ban emote', '!repeat', '!title', '!topic', '!game', '!purge', '!math', '!roll', '!coin', '!countdown']
 		
 		self.follower_arr = []
 		self.viewer_arr = []
@@ -906,16 +1014,28 @@ class TwitchBot(irc.IRCClient, object):
 		self.viewer_arr, new_viewer_arr = get_new_viewers(self.viewer_arr, self.channel_parsed, self)
 		self.perm_chatter_arr.extend(new_viewer_arr)
 		
+		#Point system
+		self.point_users = {}
+		
 		#Regexes
 		self.link_regex = re.compile(ur'^(?:https?:\/\/)?\w+(?:\.\w{2,})+(?:\/\S+)*$', re.MULTILINE)
 		self.ip_regex= re.compile(ur'^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$\b', re.MULTILINE)
 		
 		#Default additions to autoreply and command arrays		
 		self.cmd_arr.append(["!slap", "{*USER*} slaps {*TO_USER*} around a bit with a large trout."])
-		self.cmd_arr.append(["!shoutout", "Check out twitch.tv/{*TO_USER*} and follow them!"
+		self.cmd_arr.append(["!shoutout", "Check out twitch.tv/{*TO_USER*} and follow them!"])
+		
+		#Database
+		#need to create db and all the tables if doesn't already exist
+		
+		engine = create_engine("mysql://root@localhost:3306/%s" % self.channel_parsed)
+		self.conn = engine.connect()
 		
 		check_loop_repeats = LoopingCall(self.repeat_check)
 		check_loop_repeats.start(0.003)
+		
+		check_loop_countdowns = LoopingCall(self.countdown_check)
+		check_loop_countdowns.start(0.003)
 		
 		check_loop_followers= LoopingCall(self.follower_check)
 		check_loop_followers.start(self.follower_check_interval)
@@ -999,7 +1119,7 @@ class TwitchBot(irc.IRCClient, object):
 						
 				elif in_front(link_whitelist_clr_str, msg):
 					if is_mod(user, channel_parsed, user_type):
-						self.link_whitelist_arr = []
+						clear_table(self, "link_whitelists")
 						send_str = "All links removed." 
 					else:
 						send_str = "You have to be a mod to use \"!link whitelist clear\"." 
@@ -1224,7 +1344,7 @@ class TwitchBot(irc.IRCClient, object):
 						return		
 				#clear
 				elif in_front(permit_clr_str, msg):
-					self.permit_arr = []
+					clear_table(self, "spam_permits")
 					send_str = "All permits removed." 
 				#normal
 				elif permit_str == msg:
@@ -1700,7 +1820,7 @@ class TwitchBot(irc.IRCClient, object):
 						return		
 				elif in_front(banphrase_clr_str, msg):
 					if is_mod(user, self.channel_parsed, user_type): 
-						self.banphrase_arr = []
+						clear_table(self, "banphrases")
 						send_str = "All banphrases removed." 
 					else:
 						send_str = "You have to be a mod to use \"!banphrase clear\"." 
@@ -1838,7 +1958,7 @@ class TwitchBot(irc.IRCClient, object):
 				#clear autoreplies
 				elif in_front(autoreply_clr_str, msg):
 					if is_mod(user, self.channel_parsed, user_type): 
-						self.ar_arr = []
+						clear_table(self, "autoreplies")
 						send_str = "All autoreplies removed." 
 					else:
 						send_str = "You have to be a mod to use \"!autoreply clear\"." 
@@ -1915,6 +2035,11 @@ class TwitchBot(irc.IRCClient, object):
 		set_banphrase_str = "!set banphrase"
 		set_autoreply_str = "!set autoreply"
 		set_repeat_str = "!set repeat"
+		set_roll_str = "!set roll"
+		set_math_str = "!set math"
+		set_coin_str = "!set coin"
+		set_countdown_str = "!set countdown"
+		set_topic_str = "!set topic"
 		
 		set_antispam_str = "!set antispam"
 		set_repeat_antispam_str = "!set repeat antispam"
@@ -1961,7 +2086,31 @@ class TwitchBot(irc.IRCClient, object):
 					#repeat
 					elif in_front(set_repeat_str, msg):
 						self.repeat_on = set_value(self.repeat_on, "repeat", msg_arr, irc)
-				
+					
+					#roll
+					elif in_front(set_roll_str, msg):
+						self.roll_on = set_value(self.roll_on, "roll", msg_arr, irc)
+					
+					#math
+					elif in_front(set_math_str, msg):
+						self.math_on = set_value(self.math_on, "math", msg_arr, irc)
+						
+					#coin
+					elif in_front(set_coin_str, msg):
+						self.coin_on = set_value(self.coin_on, "coin", msg_arr, irc)
+					
+					#countdown
+					elif in_front(set_countdown_str, msg):
+						self.countdown_on = set_value(self.countdown_on, "countdown", msg_arr, irc)
+						
+					#topic
+					elif in_front(set_topic_str, msg):
+						self.topic_on = set_value(self.topic_on, "topic", msg_arr, irc)
+						
+					else:
+						send_str = "Usage: \"!set <feature> on/off \"." 
+						whisper(user, send_str)
+						return
 				elif len(msg_arr) == 4:
 					#repeat antispam
 					if in_front(set_repeat_antispam_str, msg):
@@ -1999,6 +2148,10 @@ class TwitchBot(irc.IRCClient, object):
 					elif in_front(set_emote_stats_str, msg):
 						self.emote_stats_on = set_value(self.emote_stats_on, "emote stats", msg_arr, irc)
 						
+					else:
+						send_str = "Usage: \"!set <feature> on/off \"." 
+						whisper(user, send_str)
+						return	
 				elif len(msg_arr) == 5:
 					#fake purge antispam
 					if in_front(set_fake_purge_antispam_str, msg):
@@ -2011,6 +2164,11 @@ class TwitchBot(irc.IRCClient, object):
 					#long word antispam
 					elif in_front(set_long_word_antispam_str, msg):
 						self.long_word_antispam_on = set_value(self.long_word_antispam_on, "long word antispam", msg_arr, irc)
+					
+					else:
+						send_str = "Usage: \"!set <feature> on/off \"." 
+						whisper(user, send_str)
+						return	
 				else:
 					#usage
 					send_str = "Usage: \"!set <feature> on/off \"." 
@@ -2070,7 +2228,7 @@ class TwitchBot(irc.IRCClient, object):
 										self.vote_on = True
 										send_str = "Poll opened! To vote use !vote <option/index>." 
 										for vote_option_index, vote_option in enumerate(self.vote_option_arr): 
-											self.vote_option_arr[vote_option_index] = self.vote_option_arr[vote_option_index].rstrip().lstrip()
+											self.vote_option_arr[vote_option_index] = self.vote_option_arr[vote_option_index]
 											self.vote_arr.append([vote_option.strip(), 0, []])
 										self.write(send_str)
 										
@@ -2081,7 +2239,7 @@ class TwitchBot(irc.IRCClient, object):
 											else:
 												send_str += "(%s.) %s." % (vote_option_index + 1, vote_option)	
 										self.write(send_str)
-										return [self.vote_option_arr, self.vote_arr, 0]
+										return 
 									else:
 										send_str = "You must specify more than one option for a poll."
 						else:
@@ -2114,9 +2272,10 @@ class TwitchBot(irc.IRCClient, object):
 					if is_mod(user, self.channel_parsed, user_type):
 						for pair in self.vote_arr:
 							pair[1] = 0
-						send_str = "Votes reset." 
+						#ye future self u will have to handle this a different way than the clear_table method
+						send_str = "Votes reset."
 						self.write(send_str)
-						return [self.vote_option_arr, self.vote_arr, 0]
+						return 
 					else:
 						send_str = "You have to be a mod to reset the poll votes." 
 						whisper(user, send_str)
@@ -2268,7 +2427,7 @@ class TwitchBot(irc.IRCClient, object):
 							else:
 								send_str = "Invalid vote option"
 								whisper(user, send_str)
-							return [self.vote_option_arr, self.vote_arr, self.vote_total]
+							return 
 							
 					elif is_num(msg_arr[1].strip()):
 						vote_choice_index = int(msg_arr[1])
@@ -2298,7 +2457,7 @@ class TwitchBot(irc.IRCClient, object):
 										whisper(user, send_str)
 										return#save some time, end this loop if they are already in the option they selected
 									break#also shouldnt be kimpossible		
-							return [self.vote_option_arr, self.vote_arr, self.vote_total]
+							return 
 						else:
 							send_str = "Invalid index for vote choice."
 							whisper(user, send_str)
@@ -2328,7 +2487,6 @@ class TwitchBot(irc.IRCClient, object):
 		
 	def raffle_parse(self, user, msg, channel_parsed, user_type):
 		#raffle
-		
 		raffle_str = "!raffle"
 		start_raffle_str = "!raffle start"
 		end_raffle_str = "!raffle end"
@@ -2348,39 +2506,58 @@ class TwitchBot(irc.IRCClient, object):
 						send_str = "Only mods can start raffles." 
 						whisper(user, send_str)
 						return
-					self.write(send_str)
 					
 				elif end_raffle_str == msg:
 					if is_mod(user, self.channel_parsed, user_type):
 						if len(self.raffle_users) > 0:
 							winner = self.raffle_users[random.randint(0, (len(self.raffle_users) - 1))]
-							#need to have prize of some sorts?
-							send_str = "%s has won the raffle!" % (winner)
+							point_change(self, winner, self.raffle_point_value)
+							if self.lottery_point_value != 1:
+								send_str = "%s has won the raffle and obtained %s points!" % (winner, self.raffle_point_value)
+							else:
+								send_str = "%s has won the raffle and obtained %s point!" % (winner, self.raffle_point_value)
+							whisper_str = "You now have %s points in this channel." % self.point_users[winner]
+							whisper(winner, whisper_str)
 						else:
 							send_str = "No one joined the raffle, there is no winner." 
 						self.raffle_on = False
-						self.raffle_users = []
+						clear_table(self, "raffle")
 						
 					else:
 						send_str = "Only mods can end raffles." 
 						whisper(user, send_str)
 						return
-					self.write(send_str)
+				else:
+					if is_mod(user, channel_parsed, user_type):
+						send_str = "Usage: !raffle start/end <point value>"
+					else:
+						send_str = "Only mods can use !raffle commands"
+					whisper(user, send_str)
+					return
 			else:
-				if start_raffle_str == msg:
+				if in_front(start_raffle_str, msg):
 					if is_mod(user, self.channel_parsed, user_type):
 						self.raffle_on = True
-						send_str = "Raffle started. Join the raffle with \"!raffle\"." % ()
+						msg_arr = msg.split()
+						if len(msg_arr) > 2:
+							if is_num(msg_arr[2]):
+								self.raffle_point_value = simplify_num(msg_arr[2])
+								send_str = "Raffle started with a %s point prize. Join the raffle with \"!raffle\"." % self.raffle_point_value
+							else:
+								self.raffle_point_value = 0
+								send_str = "Invalid raffle prize input, raffle started with prize of 0 points. Join the raffle with \"!raffle\"." 
+						else:
+							self.raffle_point_value = 0
+							send_str = "No raffle prize input, raffle started with prize of 0 points. Join the raffle with \"!raffle\"." 
 					else:
 						send_str = "Only mods can start raffles." 
 						whisper(user, send_str)
 						return
-					self.write(send_str)
 				elif raffle_str == msg and is_mod(user, self.channel_parsed, user_type):
 					send_str = "Usage: !raffle start/end" 
 					whisper(user, send_str)
 					return
-				elif end_raffle_str == msg:
+				elif in_front(end_raffle_str, msg):
 					if is_mod(user, self.channel_parsed, user_type):
 						send_str = "No ongoing raffles."
 						self.write(send_str)	
@@ -2388,10 +2565,104 @@ class TwitchBot(irc.IRCClient, object):
 						send_str = "Only mods can end raffles." 
 						whisper(user, send_str)
 						return
-					
+				else:
+					send_str = "Usage: !raffle start/end" 
+					whisper(user, send_str)
+					return
+			self.write(send_str)
 		else:
 			return False
 	
+	def lottery_parse(self, user, msg, channel_parsed, user_type):
+		#lottery
+		lottery_str = "!lottery"
+		start_lottery_str = "!lottery start"
+		end_lottery_str = "!lottery end"
+		
+		if in_front(lottery_str, msg):
+			if self.lottery_on:
+				if start_lottery_str == msg:
+					if is_mod(user, self.channel_parsed, user_type):
+						send_str = "There is already an ongoing lottery." 
+					else:
+						send_str = "Only mods can start lotteries." 
+						whisper(user, send_str)
+						return
+				elif end_lottery_str == msg:
+					if is_mod(user, self.channel_parsed, user_type):
+						chatters_json = get_json_chatters(channel_parsed)
+						#if chatters_json["chatters"]["viewers"]:#should be run in an existing channel so this should always be true
+						self.lottery_users.extend(chatters_json["chatters"]["viewers"])
+						self.lottery_users.extend(chatters_json["chatters"]["moderators"])
+						lottery_table = get_table(self, "lottery")
+						if len(lottery_table) > 0:
+							############3
+							#continue implementing the new functions, as well as make this work
+							############
+							winner = lottery_table[random.randint(0, (len(lottery_table) - 1))].encode("utf-8")
+							point_change(self, winner, self.lottery_point_value)
+							if self.lottery_point_value != 1:
+								send_str = "%s has won the lottery and obtained %s points!" % (winner, self.lottery_point_value)
+							else:
+								send_str = "%s has won the lottery and obtained %s point!" % (winner, self.lottery_point_value)
+							whisper_str = "You now have %s points in this channel." % self.point_users[winner]
+							whisper(winner, whisper_str)
+						else:
+							send_str = "No one joined the lottery, there is no winner." 
+						self.lottery_on = False
+						clear_table(self, "lottery")
+						
+					else:
+						send_str = "Only mods can end lotteries." 
+						whisper(user, send_str)
+						return
+				else:
+					if is_mod(user, channel_parsed, user_type):
+						send_str = "Usage: !lottery start/end <point value>"
+					else:
+						send_str = "Only mods can use !lottery commands"
+					whisper(user, send_str)
+					return
+				self.write(send_str)
+			else:
+				if in_front(start_lottery_str, msg):
+					if is_mod(user, self.channel_parsed, user_type):
+						self.lottery_on = True
+						msg_arr = msg.split()
+						if len(msg_arr) > 2:
+							if is_num(msg_arr[2]):
+								self.lottery_point_value = simplify_num(msg_arr[2])
+								send_str = "Lottery started with a %s point prize." % self.lottery_point_value
+							else:
+								self.lottery_point_value = 0
+								send_str = "Invalid lottery prize input, lottery started with prize of 0 points." 
+						else:
+							self.lottery_point_value = 0
+							send_str = "No lottery prize input, lottery started with prize of 0 points." 
+					else:
+						send_str = "Only mods can start lotteries." 
+						whisper(user, send_str)
+						return
+					self.write(send_str)
+				elif lottery_str == msg and is_mod(user, self.channel_parsed, user_type):
+					send_str = "Usage: !lottery start/end" 
+					whisper(user, send_str)
+					return
+				elif in_front(end_lottery_str, msg):
+					if is_mod(user, self.channel_parsed, user_type):
+						send_str = "No ongoing lotteries."
+						self.write(send_str)	
+					else:
+						send_str = "Only mods can end lotteries." 
+						whisper(user, send_str)
+						return
+				else:
+					send_str = "Usage: !lottery start/end" 
+					whisper(user, send_str)
+					return
+		else:
+			return False
+			
 	def roulette_parse(self, user, msg, channel_parsed, user_type):
 		#roulette
 		#if user is mod then say it doesnt kill you or something
@@ -2527,7 +2798,7 @@ class TwitchBot(irc.IRCClient, object):
 				elif ball_clr_str == msg:
 					if is_mod(user, self.channel_parsed, user_type): 
 						if len(self.ball_arr) > 0:
-							self.ball_arr = []
+							clear_table(self, "8ball_responses")
 							send_str = "All 8ball responses removed." 
 						else:	
 							send_str = "There are currently no 8ball responses." 
@@ -2949,7 +3220,8 @@ class TwitchBot(irc.IRCClient, object):
 							if not disconnect_cmd(repeat_cmd):
 								current_time = time.time()
 								repeat_set = [current_time, repeat_cmd, repeat_interval]
-								self.repeat_arr.append(repeat_set)	
+								#add the new set to the database
+								insert_data(self, "repeats", ["set_time", "phrase", "`interval`"], repeat_set)
 								send_str = "Repeat command \"%s\" added with interval %s." % (repeat_cmd, parse_sec_condensed(repeat_interval))
 							else:
 								send_str = "No \".disconnect\" or \"/disconnect\" variants allowed."
@@ -2967,19 +3239,17 @@ class TwitchBot(irc.IRCClient, object):
 						if len(msg_arr) > 2:
 							repeat_cmd = msg_arr[2]
 							if is_num(repeat_cmd):
-								if repeat_cmd > 0 and repeat_cmd <= len(self.repeat_arr):
-									send_str = "Repeat command \"%s\" with interval %s removed at index %s." % (self.repeat_arr[int(repeat_cmd)-1][1], parse_sec_condensed(self.repeat_arr[int(repeat_cmd)-1][2]), repeat_cmd)
-									
-									#should be the same index as the pair, after all.
-									del self.repeat_arr[int(repeat_cmd)-1]
+								repeat_cmd = int(repeat_cmd)
+								delete_status = delete_index_handler(self, "repeats", repeat_cmd)
+								if delete_status:
+									send_str = "Repeat command \"%s\" with interval %s removed at index %s." % (delete_status["phrase"], parse_sec_condensed(delete_status["interval"]), repeat_cmd)
+									#return the row that was deleted if 
 								else:
 									send_str = "Invalid index for repeat command removal." 
 							else:
-								for repeat_set in self.repeat_arr:
-									if repeat_cmd == repeat_set[1]:
-										send_str = "Repeat command \"%s\" with interval %s removed." % (repeat_cmd, parse_sec_condensed(repeat_set[2]))		
-										self.repeat_arr.remove(repeat_set)
-										break
+								delete_status = delete_value_handler(self, "repeats", "phrase", repeat_cmd)
+								if delete_status:
+									send_str = "Repeat command \"%s\" with interval %s removed." % (repeat_cmd, parse_sec_condensed(delete_status["interval"]))		
 								else:
 									send_str = "Specified repeat command does not exist." 
 						else:
@@ -2991,25 +3261,24 @@ class TwitchBot(irc.IRCClient, object):
 						whisper(user, send_str)
 						return
 				elif repeat_list_str == msg:
-					if len(self.repeat_arr) == 0:
+					repeats_table = get_table(self, "repeats")
+					if len(repeats_table) == 0:
 						send_str = "No active repeat commands." 
 					else:
 						send_str = "Active repeat commands: " 
-						for repeat_set in range(len(self.repeat_arr)):
-							repeat_cmd = self.repeat_arr[repeat_set][1]
-							repeat_interval = self.repeat_arr[repeat_set][2]
-							if (repeat_set != len(self.repeat_arr)-1):
+						for row_index, row in enumerate(repeats_table):
+							if (row_index != len(repeats_table)-1):
 								#every element but last one
-								send_str += "(%s.) %s: %s, " % (repeat_set+1, repeat_cmd, parse_sec_condensed(repeat_interval))
+								send_str += "(%s.) %s: %s, " % (row_index+1, row["phrase"], parse_sec_condensed(row["interval"]))
 							else:
 								#last element in arr
-								send_str += "(%s.) %s: %s." % (repeat_set+1, repeat_cmd, parse_sec_condensed(repeat_interval))
+								send_str += "(%s.) %s: %s." % (row_index+1, row["phrase"], parse_sec_condensed(row["interval"]))
 					if not is_mod(user, self.channel_parsed, user_type):
 						whisper(user, send_str)		
 						return			
 				elif repeat_clr_str == msg:
 					if is_mod(user, self.channel_parsed, user_type): 
-						self.repeat_arr = []
+						clear_table(self, "repeats")
 						send_str = "All repeat commands removed." 
 					else:
 						send_str = "You have to be a mod to use \"!repeat clear\"." 
@@ -3052,20 +3321,15 @@ class TwitchBot(irc.IRCClient, object):
 								if len(cmd_msg_arr) == 2:
 									cmd_phrase = cmd_msg_arr[0].rstrip().lstrip()
 									cmd_reply = cmd_msg_arr[1].rstrip().lstrip()
-									for default_cmd in self.default_cmd_arr:#dont add something that is already a default command
-										if default_cmd == cmd_phrase:#cant do in front because then !banphrasejaklsdjfk is counted as a default cmd/not allowed
-											send_str = "%s is already a default command." % (cmd_phrase)
-											break
+									if cmd_phrase in self.default_cmd_arr:#dont add something that is already a default command
+										send_str = "%s is already a default command." % (cmd_phrase)
 									else:
-										for cmd_pair in self.cmd_arr:
-											if cmd_phrase == cmd_pair[0]:
-												#dont add duplicates
-												send_str = "%s is already an custom command." % (cmd_pair[0])
-												break
+										cmd_pair = [cmd_phrase, cmd_reply]
+										if check_duplicate(self, table, ["command", "reply"], cmd_pair):
+											send_str = "%s is already a custom command." % (cmd_phrase)
 										else:
 											if not disconnect_cmd(cmd_reply):
-												cmd_pair = [cmd_phrase, cmd_reply]
-												self.cmd_arr.append(cmd_pair)
+												insert_data(self, "commands", ["command", "reply"], cmd_pair)
 												send_str = "Command \"%s\" added, with reply \"%s\"." % (cmd_phrase, cmd_reply)
 											else:
 												send_str = "No \".disconnect\" or \"/disconnect\" variants allowed."
@@ -3095,19 +3359,17 @@ class TwitchBot(irc.IRCClient, object):
 						if len(msg_arr) == 3:
 							cmd_phrase = msg_arr[2]
 							if is_num(cmd_phrase):
-								if cmd_phrase > 0 and cmd_phrase <= len(self.cmd_arr):
-									send_str = "Command %s:%s removed at index %s." % (self.cmd_arr[int(cmd_phrase)-1][0], self.cmd_arr[int(cmd_phrase)-1][1], cmd_phrase)
-									#should be the same index as the pair, after all.
-									del self.cmd_arr[int(cmd_phrase)-1]
+								cmd_phrase = int(cmd_phrase)
+								delete_status = delete_index_handler(self, "commands", cmd_phrase)
+								if delete_status:
+									send_str = "Command %s:%s removed at index %s." % (delete_status["command"], delete_status["reply"], cmd_phrase)
 								else:
 									send_str = "Invalid index for command removal." 
 							
 							else:
-								for cmd_pair in self.cmd_arr:
-									if cmd_phrase == cmd_pair[0]:
-										send_str = "Command %s:%s removed." % (cmd_pair[0], cmd_pair[1])	
-										self.cmd_arr.remove(cmd_pair)
-										break
+								delete_status = delete_value_handler(self, "repeats", "phrase", repeat_cmd)
+								if delete_status:
+									send_str = "Command %s:%s removed." % (delete_status["command"], delete_status["reply"])	
 								else:
 									send_str = "Specified command does not exist." 
 						else:
@@ -3120,27 +3382,26 @@ class TwitchBot(irc.IRCClient, object):
 				#list commands
 				elif cmd_list_str == msg:
 					#check to make sure there are commands to list
-					if len(self.cmd_arr) == 0:
+					cmd_table = get_table(self, "commands")
+					if len(cmd_table) == 0:
 						send_str = "No active commands." 
 					else:
 						send_str = "Active commands: " 
-						for cmd_pair in range(len(self.cmd_arr)):
-							cmd_phrase = self.cmd_arr[cmd_pair][0]
-							cmd_reply = self.cmd_arr[cmd_pair][1]
-							if (cmd_pair != len(self.cmd_arr)-1):
+						for row_index, row in enumerate(cmd_table):
+							if (row_index != len(cmd_table)-1):
 								#every element but last one
-								send_str += "(%s.) %s: %s, " % (cmd_pair+1, cmd_phrase, cmd_reply)
+								send_str += "(%s.) %s: %s, " % (row_index+1, row["command"], row["reply"])
 							else:
 								#last element in arr
-								send_str += "(%s.) %s: %s." % (cmd_pair+1, cmd_phrase, cmd_reply)
-					
+								send_str += "(%s.) %s: %s." % (row_index+1, row["command"], row["reply"])
+							
 					if not is_mod(user, self.channel_parsed, user_type):
 						whisper(user, send_str)		
 						return
 				#clear commands
 				elif cmd_clr_str == msg:
 					if is_mod(user, channel_parsed, user_type):
-						self.cmd_arr = []
+						clear_table(self, "commands")
 						send_str = "All custom commands removed." 
 					else:
 						send_str = "You have to be a mod to use \"!command clear\"." 
@@ -3255,15 +3516,31 @@ class TwitchBot(irc.IRCClient, object):
 		#perhaps this would be better: https://twistedmatrix.com/documents/10.1.0/core/howto/time.html, for now using LoopingCalls
 		if self.repeat_on:
 			current_time = time.time()
-			for repeat_set in self.repeat_arr:
-				repeat_time = repeat_set[0]
-				repeat_cmd = repeat_set[1] 
-				repeat_interval = simplify_num(repeat_set[2])
-				if (current_time - repeat_time >= repeat_interval):
-					repeat_set[0] = current_time#update the time
-					self.write(repeat_cmd)
-					self.main_parse(self.nickname, repeat_cmd, 'mod')
-						
+			query = "SELECT * FROM repeats WHERE (%d - set_time > `interval` )" % current_time
+			result = self.conn.execute(query)
+			for repeat_set in result:
+				query = "UPDATE repeats SET set_time=%d WHERE `index`=%s" % (current_time, repeat_set[0])
+				self.conn.execute(query)
+				#have to ahve this for some reason idk whhy it breaks without it
+				try:
+					self.write(repeat_set[2])
+				except:
+					pass
+				self.main_parse(self.nickname, repeat_set[2], 'mod')
+	
+	def countdown_check(self):
+		if self.countdown_on:
+			current_time = time.time()
+			for countdown_set in self.countdown_arr:
+				countdown_set_time = countdown_set[0]
+				countdown_cmd = countdown_set[1] 
+				countdown_time = simplify_num(countdown_set[2])
+				if (current_time - countdown_set_time >= countdown_time):
+					self.write(countdown_cmd)
+					self.main_parse(self.nickname, countdown_cmd, 'mod')
+					#write and parse the command, then remove it
+					self.countdown_arr.remove(countdown_set)
+					
 	def follower_check(self):
 		self.follower_arr, new_follower_arr = get_new_followers(self.follower_arr, self.channel_parsed, self)
 		if len(new_follower_arr) > 0:
@@ -3392,107 +3669,429 @@ class TwitchBot(irc.IRCClient, object):
 	
 	def purge_parse(self, user, msg, channel_parsed, user_type):
 		purge_str = "!purge"
-		if in_front(purge_str, msg):
-			if is_mod(user, channel_parsed, user_type):
-				msg_arr = msg.split()
-				if len(msg_arr) > 1:
-					purge_user = msg_arr[1]
-					if is_streamer(purge_user, channel_parsed):
-						send_str = "I cannot purge the streamer."
-					else:
-						timeout(purge_user, self, self.purge_duration)
+		if self.purge_on:
+			if in_front(purge_str, msg):
+				if is_mod(user, channel_parsed, user_type):
+					msg_arr = msg.split()
+					if len(msg_arr) > 1:
+						purge_user = msg_arr[1]
+						if is_streamer(purge_user, channel_parsed):
+							send_str = "I cannot purge the streamer."
+						else:
+							timeout(purge_user, self, self.purge_duration)
+							return
+					elif len(msg_arr) == 1:
+						send_str = "Time the user out for a short duration, deleting their messages. Syntax and more information can be found in the documentation."
+						whisper(user, send_str)
 						return
-				elif len(msg_arr) == 1:
-					send_str = "Time the user out for a short duration, deleting their messages. Syntax and more information can be found in the documentation."
-					whisper(user, send_str)
-					return
+					else:
+						send_str = "Usage: !purge <user>"
+						whisper(user, send_str)
+						return
 				else:
-					send_str = "Usage: !purge <user>"
+					send_str = "Only mods can use \"!purge\"."
 					whisper(user, send_str)
-					return
+					return	
+				self.write(send_str)
 			else:
-				send_str = "Only mods can use \"!purge\"."
-				whisper(user, send_str)
-				return	
-			self.write(send_str)
+				return False
 		else:
 			return False
-	
+			
 	def math_parse(self, user, msg, channel_parsed, user_type):
 		#math - print if mod whisper if not
 		math_str = "!math"
-		if in_front(math_str, msg):
-			msg_arr = msg.split(" ")
-			if len(msg_arr) == 1:
-				send_str = "Usage: !math <equation>" 
-				whisper(user, send_str)
-			elif len(msg_arr) > 1:
-				equation = msg_arr[1]
-				try:
-					send_str = str(eval(equation))
-				except:
-					send_str = "Unable to solve equation."
+		if self.math_on:
+			if in_front(math_str, msg):
+				msg_arr = msg.split(" ")
+				if len(msg_arr) == 1:
+					send_str = "Usage: !math <equation>" 
 					whisper(user, send_str)
-					return
-			self.write(send_str)
+				elif len(msg_arr) > 1:
+					equation = msg_arr[1]
+					try:
+						send_str = str(eval(equation))
+					except:
+						send_str = "Unable to solve equation."
+						whisper(user, send_str)
+						return
+				self.write(send_str)
+			else:
+				return False
 		else:
 			return False
-
+			
 	def roll_parse(self, user, msg, channel_parsed, user_type):
 		#roll - return a random number in the given range
 		roll_str = "!roll"
-		if in_front(roll_str, msg):
-			msg_arr = msg.split(" ", 1)
-			if len(msg_arr) == 1:
-				send_str = "Usage: !roll <lower limit(default: 0)>, <upper limit>" 
-				whisper(user, send_str)
-				return
-			elif len(msg_arr) > 1:
-				range_lims = msg_arr[1].split(",")
-				if len(range_lims) > 1:
-					roll_lower_lim = range_lims[0]
-					roll_upper_lim = range_lims[1]
-					if not is_num(roll_lower_lim) or not is_num(roll_upper_lim):
-						send_str = "!Usage: !roll <lower limit(default: 0)>, <upper limit>"
-						whisper(user, send_str)
-						return
-				else:
-					if not is_num(msg_arr[1]):
-						send_str = "!Usage: !roll <lower limit(default: 0)>, <upper limit>"
-						whisper(user, send_str)
-						return
-					if int(float(msg_arr[1])) < 0:
-						roll_lower_lim = msg_arr[1]
-						roll_upper_lim = 0
-					else:
-						roll_lower_lim = 0
-						roll_upper_lim = msg_arr[1]
-				#get the random number
-				roll_lower_lim = int(float(roll_lower_lim))
-				roll_upper_lim = int(float(roll_upper_lim))
-				roll_num = random.randint(roll_lower_lim, roll_upper_lim)
-				send_str = "%s: %s" % (user, prettify_num(roll_num))
-				if not is_mod(user, channel_parsed, user_type):
+		
+		if self.roll_on:
+			if in_front(roll_str, msg):
+				msg_arr = msg.split(" ", 1)
+				if len(msg_arr) == 1:
+					send_str = "Usage: !roll <lower limit(default: 0)>, <upper limit>" 
 					whisper(user, send_str)
 					return
-			self.write(send_str)
+				elif len(msg_arr) > 1:
+					range_lims = msg_arr[1].split(",")
+					if len(range_lims) > 1:
+						roll_lower_lim = range_lims[0]
+						roll_upper_lim = range_lims[1]
+						if not is_num(roll_lower_lim) or not is_num(roll_upper_lim):
+							send_str = "!Usage: !roll <lower limit(default: 0)>, <upper limit>"
+							whisper(user, send_str)
+							return
+					else:
+						if not is_num(msg_arr[1]):
+							send_str = "!Usage: !roll <lower limit(default: 0)>, <upper limit>"
+							whisper(user, send_str)
+							return
+						if int(float(msg_arr[1])) < 0:
+							roll_lower_lim = msg_arr[1]
+							roll_upper_lim = 0
+						else:
+							roll_lower_lim = 0
+							roll_upper_lim = msg_arr[1]
+					#get the random number
+					roll_lower_lim = int(float(roll_lower_lim))
+					roll_upper_lim = int(float(roll_upper_lim))
+					roll_num = random.randint(roll_lower_lim, roll_upper_lim)
+					send_str = "%s: %s" % (user, prettify_num(roll_num))
+					if not is_mod(user, channel_parsed, user_type):
+						whisper(user, send_str)
+						return
+				self.write(send_str)
+			else:
+				return False
 		else:
 			return False
-	
+			
 	def coin_parse(self, user, msg, channel_parsed, user_type):
 		#coin - return heads or tails
 		coin_str = "!coin"
-		if in_front(coin_str, msg):
-			if random.randint(0, 1) == 0:
-				send_str = "%s: Heads" % user
+		if self.coin_on:
+			if in_front(coin_str, msg):
+				if random.randint(0, 1) == 0:
+					send_str = "%s: Heads" % user
+				else:
+					send_str = "%s: Tails" % user
+				if not is_mod(user, channel_parsed, user_type):
+					whisper(user, send_str)
+					return
+				self.write(send_str)
 			else:
-				send_str = "%s: Tails" % user
-			if not is_mod(user, channel_parsed, user_type):
-				whisper(user, send_str)
-				return
-			self.write(send_str)
+				return False
 		else:
-			return 
+			return False
+	
+	def countdown_parse(self, user, msg, channel_parsed, user_type):
+		#add in expiration date/time til expiration for command
+		#!countdown add asdf: 5 seconds
+		#!countdown add asdf: <date>
+		#how can we do the second's date, formatting wise?
+		
+		countdown_str = "!countdown"
+		countdown_add_str = "!countdown add"
+		countdown_del_str = "!countdown delete"
+		countdown_rem_str = "!countdown remove"
+		countdown_list_str = "!countdown list"
+		countdown_clr_str = "!countdown clear"
+
+		if self.countdown_on:
+			if in_front(countdown_str, msg):
+				if in_front(countdown_add_str, msg):
+					if is_mod(user, channel_parsed, user_type):
+						msg_arr = msg.split(" ")
+						if len(msg_arr) > 3:
+							del msg_arr[0:2]#remove command specifiers
+							countdown_cmd = ''
+							for cmd_part in range(len(msg_arr)):
+								if cmd_part == len(msg_arr)-2 and msg_arr[cmd_part+1] in self.time_unit_arr:#if unit of time specified
+									countdown_cmd = countdown_cmd.rstrip()
+									countdown_time = simplify_num(msg_arr[cmd_part])
+									time_unit = msg_arr[cmd_part+1]
+									countdown_time = convert_to_sec(countdown_time, time_unit, self)
+									break
+								elif cmd_part == len(msg_arr)-1:#if no unit of time specified, seconds OR date of expiration
+									countdown_cmd = countdown_cmd.rstrip()#get rid of trailing space
+									countdown_time = msg_arr[cmd_part]
+								else:
+									countdown_cmd += msg_arr[cmd_part] + " "
+							if not disconnect_cmd(countdown_cmd):
+								current_time = time.time()
+								countdown_set = [current_time, countdown_cmd, countdown_time]
+								insert_data(self, "countdowns", ["set_time", "command", "duration"], countdown_set)
+								send_str = "Countdown command \"%s\" added with expiration time %s." % (countdown_cmd, parse_sec_condensed(countdown_time))
+							else:
+								send_str = "No \".disconnect\" or \"/disconnect\" variants allowed."
+						else:
+							send_str = "Usage: !countdown add <command> <expiration time/date>" 
+							whisper(user, send_str)
+							return
+					else:
+						send_str = "You have to be a mod to use \"!countdown add\"." 
+						whisper(user, send_str)
+						return
+				elif in_front(countdown_del_str, msg) or in_front(countdown_rem_str, msg):
+					if is_mod(user, channel_parsed, user_type):
+						msg_arr = msg.split(" ", 2)
+						if len(msg_arr) > 2:
+							countdown_cmd = msg_arr[2]
+							if is_num(countdown_cmd):
+								countdown_cmd = int(countdown_cmd)
+								delete_status = delete_index_handler(self, "countdowns", countdown_cmd)
+									send_str = "Countdown command \"%s\" with expiration time %s removed at index %s." % (self.countdown_arr[int(countdown_cmd)-1][1], parse_sec_condensed(self.countdown_arr[int(countdown_cmd)-1][2]), countdown_cmd)
+									
+									#should be the same index as the pair, after all.
+									del self.countdown_arr[int(countdown_cmd)-1]
+								else:
+									send_str = "Invalid index for countdown command removal." 
+							else:
+								delete_status = delete_value_handler(self, "countdowns", "command", countdown_cmd)
+								if delete_status: 
+									send_str = "Countdown command \"%s\" with expiration time %s removed." % (countdown_cmd, parse_sec_condensed(delete_status["duration"]))		
+								else:
+									send_str = "Specified countdown command does not exist." 
+						else:
+							send_str = "Usage: !countdown delete/remove <command/index>" 
+							whisper(user, send_str)
+							return
+					else:
+						send_str = "You have to be a mod to use \"!countdown delete/remove\"." 
+						whisper(user, send_str)
+						return
+				elif countdown_list_str == msg:
+					countdown_table = get_table(self, "countdowns")
+					if len(countdown_table) == 0:
+						send_str = "No active countdown commands." 
+					else:
+						send_str = "Active countdown commands: " 
+						for row_index, row in enmuerate(countdown_table):
+							if (countdown_set != len(self.countdown_arr)-1):
+								#every element but last one
+								send_str += "(%s.) %s: %s, " % (row_index+1, row["command"], row["duration"])
+							else:
+								#last element in arr
+								send_str += "(%s.) %s: %s." % (row_index+1, row["command"], row["duration"])
+								
+					if not is_mod(user, self.channel_parsed, user_type):
+						whisper(user, send_str)		
+						return			
+				elif countdown_clr_str == msg:
+					if is_mod(user, self.channel_parsed, user_type): 
+						clear_table(self, "countdowns")
+						send_str = "All countdown commands removed." 
+					else:
+						send_str = "You have to be a mod to use \"!countdown clear\"." 
+						whisper(user, send_str)
+						return
+				elif countdown_str == msg:
+					send_str = "Add or remove commands to be executed at the end of a specified time. Syntax and more information can be found in the documentation." 
+					whisper(user, send_str)
+					return
+				else:
+					if is_mod(user, channel_parsed, user_type):
+						send_str = "Usage: !countdown add/delete/remove/list/clear <command> <expiration time>" 
+					else:
+						send_str = "Usage: !countdown list" 
+					whisper(user, send_str)
+					return
+				self.write(send_str)
+				return
+			else:
+				return False
+	
+	def points_parse(self, user, msg, channel_parsed, user_type):
+		#!points - return number of points for the current user, allow mods to get the points of any user
+		points_str = "!points"
+		if self.points_on:
+			if in_front(points_str, msg):
+				msg_arr = msg.split()
+				if len(msg_arr) > 1:
+					if is_mod(user, channel_parsed, user_type):
+						point_user = msg_arr[1]
+						if point_user in self.point_users:
+							points_num = self.point_users[point_user]
+							if points_num != 1:
+								send_str = "%s has %s points in this channel." % (point_user, points_num)
+							else:
+								send_str = "%s has %s point in this channel." % (point_user, points_num)
+						else:
+							send_str = "%s has no points in this channel." % point_user
+							whisper(user, send_str)
+							return
+					else:
+						send_str = "You have to be a mod to get the points of other users"
+				elif len(msg_arr) == 1:
+					if user in self.point_users:
+						points_num = self.point_users[user]
+						if points_num != 1:
+							send_str = "%s, you have %s points in this channel" % (user, points_num)
+						else:
+							send_str = "%s, you have %s point in this channel" % (user, points_num)
+					else:
+						send_str = "%s, you do not have any points in this channel" % user
+				else:
+					send_str = "!Usage: !points <user>"
+					whisper(user, send_str)
+					return
+					
+				if is_mod(user, channel_parsed, user_type):
+					self.write(send_str)
+				else:				
+					whisper(user, send_str)
+					return
+			else:
+				return False
+		else:
+			return False
+	
+	def slots_parse(self, user, msg, channel_parsed, user_type):
+		'''
+		Randomly chooses emoticon three times and gives points, default stats are below
+		They have to pay a default fee of 5 points to play
+		Will whisper them back their new total of points after they play
+		Will print the slot roll and points gained
+		
+		1 PraiseIt = 10 points
+		2 PraiseIts = 60 Points
+		3 PraiseIts = 300 Points / Jackpot
+		
+		3 Kappas = 20
+		3 KappaPrides = 30
+		3 KappaRoss = 40
+		3 PeteZaRoll = 50
+		3 bleedPurple = 60
+		3 deIlluminati = 70
+		
+		Kappa			35%
+		KappaPride		30%
+		KappaRoss		20%
+		PeteZaroll		08%
+		bleedPurple		04%
+		deIlluminati	02%
+		PraiseIt		01%
+		'''
+		slots_str = "!slots"
+		if self.slots_on:
+			if in_front(slots_str, msg):
+				default_slots_cost = -1
+				point_change(self, user, default_slots_cost)
+				slot_rand_arr = [random.random(), random.random(), random.random()]
+				slot_emote_arr = ['','','']
+				for slot_index, slot in enumerate(slot_rand_arr):
+					if slot <= .35:
+						slot_emote_arr[slot_index] = "Kappa"
+					elif slot <= .65:
+						slot_emote_arr[slot_index] = "KappaPride"
+					elif slot <= .85:
+						slot_emote_arr[slot_index] = "KappaRoss"
+					elif slot <= .93:
+						slot_emote_arr[slot_index] = "PeteZaroll"
+					elif slot <= .97:
+						slot_emote_arr[slot_index] = "bleedPurple"
+					elif slot <= .99:
+						slot_emote_arr[slot_index] = "deIlluminati"
+					elif slot <= 1.00:
+						slot_emote_arr[slot_index] = "PraiseIt"
+					else:
+						slot_emote_arr[slot_index] = "Invalid"
+				if slot_emote_arr.count("Kappa") == 3:
+					slot_point_value = 20
+				elif slot_emote_arr.count("KappaPride") == 3:
+					slot_point_value = 30
+				elif slot_emote_arr.count("KappaRoss") == 3:
+					slot_point_value = 40
+				elif slot_emote_arr.count("PeteZaroll") == 3:
+					slot_point_value = 50
+				elif slot_emote_arr.count("bleedPurple") == 3:
+					slot_point_value = 60
+				elif slot_emote_arr.count("deIlluminati") == 3:
+					slot_point_value = 70
+				elif slot_emote_arr.count("PraiseIt") >= 1:
+					if slot_emote_arr.count("PraiseIt") == 1:
+						slot_point_value = 10
+					elif slot_emote_arr.count("PraiseIt") == 2:
+						slot_point_value = 60
+					elif slot_emote_arr.count("PraiseIt") == 3:
+						slot_point_value = 300
+					#else shouldnt happen
+				else:
+					slot_point_value = 0
+				
+				send_str = "%s has rolled %s %s %s , which is worth %s points." % (user, slot_emote_arr[0], slot_emote_arr[1], slot_emote_arr[2], slot_point_value)
+				if slot_emote_arr.count("PraiseIt") == 3:#perhaps this will change when time comes for advanced settings, need this condition to be the one that determines the jackpot
+					send_str += " Congratulations on rolling a jackpot!"
+				elif slot_point_value <= 0:
+					send_str += " Better luck next time!"
+				point_change(self, user, slot_point_value)
+				self.write(send_str)
+				send_str = "You now have %s points in this channel." % self.point_users[user]
+				whisper(user, send_str)
+			else:
+				return False
+		else:
+			return False
+	
+	def give_parse(self, user, msg, channel_parsed, user_type):
+		#!give - give user specified amount of coins, 
+		give_str = "!give"
+		if self.give_on:
+			if in_front(give_str, msg):
+				msg_arr = msg.split()
+				if len(msg_arr) == 3:
+					give_user = msg_arr[1]
+					give_amount = msg_arr[2]
+					if is_num(give_amount):
+						give_amount = simplify_num(give_amount)
+						user_point_bal = point_balance(self, user)
+						if user_point_bal >= 0:
+							if give_amount >= 0:
+								if user_point_bal - give_amount >= 0:
+									point_change(self, user, give_amount*-1)
+									point_change(self, give_user, give_amount)
+									if is_mod(user, channel_parsed, user_type):
+										if give_amount != 1:
+											send_str = "%s has given %s %s points." % (user, give_user, give_amount)
+										else:
+											send_str = "%s has given %s %s point." % (user, give_user, give_amount)
+									else:
+										if give_amount != 1:
+											send_str = "You have given %s %s points." % (give_user, give_amount)
+											whisper(user, send_str)
+											send_str = "%s has given you %s points." % (user, give_amount)
+											whisper(give_user, send_str)
+										else:
+											send_str = "You have given %s %s point." % (give_user, give_amount)
+											whisper(user, send_str)
+											send_str = "%s has given you %s point." % (user, give_amount)
+											whisper(give_user, send_str)
+										return
+								else:
+									send_str = "You cannot give more points than you have." 
+									whisper(user, send_str)
+									return
+							else:
+								send_str = "You cannot give negative points." 
+								whisper(user, send_str)
+								return
+						else:
+							send_str = "You cannot give more points than you currently have." 
+							whisper(user, send_str)
+							return
+					else:
+						send_str = "Usage: !give <point amount> <user>"
+						whisper(user, send_str)
+						return
+				else:
+					send_str = "Usage: !give <point amount> <user>"
+					whisper(user, send_str)
+					return
+				self.write(send_str)
+			else:
+				return False
+		else:
+			return False
 			
 	def main_parse(self, user, msg, user_type):
 		comm_len_arr = [30, 60, 90, 120, 150, 180]
@@ -3511,15 +4110,15 @@ class TwitchBot(irc.IRCClient, object):
 		#needs to be reassigned every time so that we keep the topic up to date
 		self.welcome_msg = "Welcome to the channel! The current topic is \"%s\""  % self.topic
 		self.welcome_back_msg = "Welcome back! The current topic is \"%s\""  % self.topic
-		if user not in self.chatter_arr:#so that we don't say "Welcome!" until we know they aren't a lurker
+		'''if user not in self.chatter_arr:#so that we don't say "Welcome!" until we know they aren't a lurker
 			self.chatter_arr.append(user)
-			#if user in self.lurker_arr:#if they were a lurker, then welcome them now
 			if not is_streamer(user, self.channel_parsed):
 				if user in self.perm_chatter_arr:
 					whisper(user, self.welcome_back_msg)
 				else:
 					whisper(user, self.welcome_msg)
-				
+					self.perm_chatter_arr.extend(user)'''
+					
 		for permit_pair in self.permit_arr:
 			if permit_pair[3] == "message":
 				if user == permit_pair[1]:
@@ -3577,16 +4176,14 @@ class TwitchBot(irc.IRCClient, object):
 		if self.set_parse(user, msg, self.channel_parsed, user_type) != False:
 			return
 		
-		vote_return = self.vote_parse(user, msg, self.channel_parsed, user_type)
-		if vote_return != False:
-			if isinstance(vote_return, list):
-				self.vote_option_arr = vote_return[0]
-				self.vote_dict = vote_return[1]
-				self.vote_total = vote_return[2]
-			else:
-				return
+		
+		if self.vote_parse(user, msg, self.channel_parsed, user_type) != False:
+			return
 		
 		if self.raffle_parse(user, msg, self.channel_parsed, user_type) != False:
+			return
+		
+		if self.lottery_parse(user, msg, self.channel_parsed, user_type) != False:
 			return
 			
 		if self.roulette_parse(user, msg, self.channel_parsed, user_type) != False:
@@ -3657,6 +4254,18 @@ class TwitchBot(irc.IRCClient, object):
 			return
 		
 		if self.coin_parse(user, msg, self.channel_parsed, user_type) != False:
+			return
+			
+		if self.countdown_parse(user, msg, self.channel_parsed, user_type) != False:
+			return	
+		
+		if self.points_parse(user, msg, self.channel_parsed, user_type) != False:
+			return
+			
+		if self.slots_parse(user, msg, self.channel_parsed, user_type) != False:
+			return
+		
+		if self.give_parse(user, msg, self.channel_parsed, user_type) != False:
 			return
 			
 	def signedOn(self):
