@@ -121,6 +121,10 @@ current_time = time.time() will not get fractions of a second, it will only get 
 	do it right now
 for the lists - individualize em'
 check if link antispam first
+get_status instead of if self.status_on
+pretty sure it used to be resetting the votes when someone did !poll start if there was already a poll going on. should be fixed now
+need to make finish the vote database implementation
+
 """
 '''misc
  function loadEmotes() { $.getJSON("https://api.betterttv.net/emotes").done(function(data) { $emotes.text(''); parseEmotes(data.emotes); }).fail(function() { $('#emote').text("Error loading emotes.."); }); }
@@ -558,7 +562,7 @@ def is_num(x):
 		print x
 		return False
 		
-def set_value(set_on, set_feature, msg_arr, self):
+def set_value(self, set_on, set_feature, msg_arr, self):
 	if msg_arr[2] == "on":
 		if set_on == True:
 			send_str = "%s is already on." % (set_feature.capitalize())
@@ -846,6 +850,13 @@ def check_duplicate(self, table, columns, values):
 		return True
 	else:
 		return False
+
+def set_status(self, feature, status):
+	if status:
+		query = "UPDATE main SET feature_status = 1 where display_id = '%s'" % feature
+	else:
+		query = "UPDATE main SET feature_status = 0 where display_id = '%s'" % feature
+	self.conn.execute(query)
 		
 def insert_data(self, table, columns, values):
 	columns = "(" + ','.join(x for x in columns) + ")"
@@ -2065,47 +2076,47 @@ class TwitchBot(irc.IRCClient, object):
 					
 					#turn roulette on or off
 					if in_front(set_roulette_str, msg):
-						self.rol_on = set_value(self.rol_on, "roulette", msg_arr, irc)
+						self.rol_on = set_value(self, "roulette", self.rol_on, "roulette", msg_arr, irc)
 						
 					#turn 8ball on or off
 					elif in_front(set_ball_str, msg):
-						self.ball_on - set_value(self.ball_on, "8ball", msg_arr, irc)
+						self.ball_on - set_value(self, "8ball_responses", self.ball_on, "8ball", msg_arr, irc)
 						
 					#banphrases
 					elif in_front(set_banphrase_str, msg):
-						self.banphrase_on = set_value(self.banphrase_on, "banphrase", msg_arr, irc)
+						self.banphrase_on = set_value(self, "banphrases", self.banphrase_on, "banphrase", msg_arr, irc)
 					
 					#autoreplies
 					elif in_front(set_autoreply_str, msg):
-						self.autoreply_on = set_value(self.autoreply_on, "autoreply", msg_arr, irc)
+						self.autoreply_on = set_value(self, "autoreplies", self.autoreply_on, "autoreply", msg_arr, irc)
 						
 					#antispam
 					elif in_front(set_antispam_str, msg):
-						self.antispam_on = set_value(self.antispam_on, "antispam", msg_arr, irc)
+						self.antispam_on = set_value(self, "antispam", self.antispam_on, "antispam", msg_arr, irc)
 						
 					#repeat
 					elif in_front(set_repeat_str, msg):
-						self.repeat_on = set_value(self.repeat_on, "repeat", msg_arr, irc)
+						self.repeat_on = set_value(self, "repeats", self.repeat_on, "repeat", msg_arr, irc)
 					
 					#roll
 					elif in_front(set_roll_str, msg):
-						self.roll_on = set_value(self.roll_on, "roll", msg_arr, irc)
+						self.roll_on = set_value(self, "roll", self.roll_on, "roll", msg_arr, irc)
 					
 					#math
 					elif in_front(set_math_str, msg):
-						self.math_on = set_value(self.math_on, "math", msg_arr, irc)
+						self.math_on = set_value(self, self.math_on, "math", msg_arr, irc)
 						
 					#coin
 					elif in_front(set_coin_str, msg):
-						self.coin_on = set_value(self.coin_on, "coin", msg_arr, irc)
+						self.coin_on = set_value(self, self.coin_on, "coin", msg_arr, irc)
 					
 					#countdown
 					elif in_front(set_countdown_str, msg):
-						self.countdown_on = set_value(self.countdown_on, "countdown", msg_arr, irc)
+						self.countdown_on = set_value(self, self.countdown_on, "countdown", msg_arr, irc)
 						
 					#topic
 					elif in_front(set_topic_str, msg):
-						self.topic_on = set_value(self.topic_on, "topic", msg_arr, irc)
+						self.topic_on = set_value(self, self.topic_on, "topic", msg_arr, irc)
 						
 					else:
 						send_str = "Usage: \"!set <feature> on/off \"." 
@@ -2114,39 +2125,39 @@ class TwitchBot(irc.IRCClient, object):
 				elif len(msg_arr) == 4:
 					#repeat antispam
 					if in_front(set_repeat_antispam_str, msg):
-						self.repeat_antispam_on = set_value(self.repeat_antispam_on, "repeat antispam", msg_arr, irc)
+						self.repeat_antispam_on = set_value(self, self.repeat_antispam_on, "repeat antispam", msg_arr, irc)
 						
 					#emote antispam
 					elif in_front(set_emote_antispam_str, msg):
-						self.emote_antispam_on = set_value(self.emote_antispam_on, "emote antispam", msg_arr, irc)
+						self.emote_antispam_on = set_value(self, self.emote_antispam_on, "emote antispam", msg_arr, irc)
 						
 					#caps antispam
 					elif in_front(set_caps_antispam_str, msg):
-						self.caps_antispam_on = set_value(self.caps_antispam_on, "caps antispam", msg_arr, irc)
+						self.caps_antispam_on = set_value(self, self.caps_antispam_on, "caps antispam", msg_arr, irc)
 					
 					#skincode antispam
 					elif in_front(set_skincode_antispam_str, msg):
-						self.skincode_antispam_on = set_value(self.skincode_antispam_on, "skincode antispam", msg_arr, irc)
+						self.skincode_antispam_on = set_value(self, self.skincode_antispam_on, "skincode antispam", msg_arr, irc)
 					
 					#symbol antispam
 					elif in_front(set_symbol_antispam_str, msg):
-						self.symbol_antispam_on = set_value(self.symbol_antispam_on, "symbol antispam", msg_arr, irc)
+						self.symbol_antispam_on = set_value(self, self.symbol_antispam_on, "symbol antispam", msg_arr, irc)
 					
 					#link antispam
 					elif in_front(set_link_antispam_str, msg):
-						self.link_antispam_on = set_value(self.link_antispam_on, "link antispam", msg_arr, irc)
+						self.link_antispam_on = set_value(self, self.link_antispam_on, "link antispam", msg_arr, irc)
 					
 					#me antispam
 					elif in_front(set_me_antispam_str, msg):
-						self.me_antispam_on = set_value(self.me_antispam_on, "me antispam", msg_arr, irc)
+						self.me_antispam_on = set_value(self, self.me_antispam_on, "me antispam", msg_arr, irc)
 						
 					#ban emotes
 					elif in_front(set_ban_emotes_str, msg):
-						self.ban_emotes_on = set_value(self.ban_emotes_on, "ban emotes", msg_arr, irc)
+						self.ban_emotes_on = set_value(self, self.ban_emotes_on, "ban emotes", msg_arr, irc)
 					
 					#emote stats
 					elif in_front(set_emote_stats_str, msg):
-						self.emote_stats_on = set_value(self.emote_stats_on, "emote stats", msg_arr, irc)
+						self.emote_stats_on = set_value(self, self.emote_stats_on, "emote stats", msg_arr, irc)
 						
 					else:
 						send_str = "Usage: \"!set <feature> on/off \"." 
@@ -2155,15 +2166,15 @@ class TwitchBot(irc.IRCClient, object):
 				elif len(msg_arr) == 5:
 					#fake purge antispam
 					if in_front(set_fake_purge_antispam_str, msg):
-						self.fake_purge_antispam_on = set_value(self.fake_purge_antispam_on, "fake purge antispam", msg_arr, irc)
+						self.fake_purge_antispam_on = set_value(self, self.fake_purge_antispam_on, "fake purge antispam", msg_arr, irc)
 					
 					#long message antispam
 					elif in_front(set_long_msg_antispam_str, msg):
-						self.long_msg_antispam_on = set_value(self.long_msg_antispam_on, "long message antispam", msg_arr, irc)
+						self.long_msg_antispam_on = set_value(self, self.long_msg_antispam_on, "long message antispam", msg_arr, irc)
 					
 					#long word antispam
 					elif in_front(set_long_word_antispam_str, msg):
-						self.long_word_antispam_on = set_value(self.long_word_antispam_on, "long word antispam", msg_arr, irc)
+						self.long_word_antispam_on = set_value(self, self.long_word_antispam_on, "long word antispam", msg_arr, irc)
 					
 					else:
 						send_str = "Usage: \"!set <feature> on/off \"." 
@@ -2214,27 +2225,27 @@ class TwitchBot(irc.IRCClient, object):
 					if len(msg_arr) >= 3:
 						if is_mod(user, self.channel_parsed, user_type):
 							#reset vote stuffs
-							self.vote_arr = []
 							if self.vote_on:#if already ongoing poll
 								send_str = "There is already an ongoing poll." 
 							else:
-								self.vote_option_arr = msg_arr[2].split(",")
-								for vote_option in self.vote_option_arr:
+								clear_table(self, "votes")
+								vote_option_arr = msg_arr[2].split(",")
+								for vote_option in vote_option_arr:
 									if vote_option in vote_cmd_arr:
 										send_str = "You cannot use default vote commands as poll options"
 										break
 								else:
-									if len(self.vote_option_arr) > 1:
-										self.vote_on = True
+									vote_option_table = get_table(self, "vote_options")
+									if len(vote_option_table) > 1:
+										set_status(self, "vote_dict", True)
 										send_str = "Poll opened! To vote use !vote <option/index>." 
-										for vote_option_index, vote_option in enumerate(self.vote_option_arr): 
-											self.vote_option_arr[vote_option_index] = self.vote_option_arr[vote_option_index]
-											self.vote_arr.append([vote_option.strip(), 0, []])
+										for vote_option_index, vote_option in enumerate(vote_option_table): 
+											insert_data(self, "votes", ["option", "votes", "users"], [vote_option.strip(), 0, []])
 										self.write(send_str)
 										
 										send_str = "Current poll options are: "
-										for vote_option_index, vote_option in enumerate(self.vote_option_arr):
-											if vote_option_index != len(self.vote_option_arr) -1:
+										for vote_option_index, vote_option in enumerate(vote_option_table):
+											if vote_option_index != len(vote_option_table) -1:
 												send_str += "(%s.) %s, " % (vote_option_index + 1, vote_option)
 											else:
 												send_str += "(%s.) %s." % (vote_option_index + 1, vote_option)	
@@ -2254,8 +2265,8 @@ class TwitchBot(irc.IRCClient, object):
 					if len(msg_arr) == 2:
 						if self.vote_on:
 							send_str = "Current poll options are: "
-							for vote_option_index, vote_option in enumerate(self.vote_option_arr):
-								if vote_option_index != len(self.vote_option_arr) -1:
+							for vote_option_index, vote_option in enumerate(vote_option_table):
+								if vote_option_index != len(vote_option_table) -1:
 									send_str += "(%s.) %s, " % (vote_option_index + 1, vote_option)
 								else:
 									send_str += "(%s.) %s." % (vote_option_index + 1, vote_option)
@@ -2270,9 +2281,8 @@ class TwitchBot(irc.IRCClient, object):
 						return
 				elif in_front(poll_reset_str, msg):
 					if is_mod(user, self.channel_parsed, user_type):
-						for pair in self.vote_arr:
-							pair[1] = 0
-						#ye future self u will have to handle this a different way than the clear_table method
+						query = "UPDATE votes SET votes = 0, users = []"
+						self.conn.execute(query)
 						send_str = "Votes reset."
 						self.write(send_str)
 						return 
@@ -2284,7 +2294,8 @@ class TwitchBot(irc.IRCClient, object):
 					if self.vote_on:
 						if self.vote_total != 0:
 							send_str = "Current poll stats: "
-							for pair in self.vote_arr:
+							votes_table = get_table(self, "votes")
+							for pair in votes_table:
 								key = pair[0]
 								value = pair[1]
 								vote_perc = round((float(value) / self.vote_total) * 100, 2)
@@ -2293,7 +2304,7 @@ class TwitchBot(irc.IRCClient, object):
 							send_str += "Total votes: %s" % self.vote_total
 							self.write(send_str)
 							poll_winner = [['', 0]]
-							for pair in self.vote_arr:
+							for pair in votes_table:
 								key = pair[0]
 								value = pair[1]
 								option_perc = (float(poll_winner[0][1])/self.vote_total * 100)
@@ -2332,10 +2343,16 @@ class TwitchBot(irc.IRCClient, object):
 						whisper(user, send_str)		
 						return
 				elif in_front(vote_remove_str, msg):
-					for vote_option_index, vote_option in enumerate(self.vote_arr):
-						if user in vote_option[2]:
-							vote_option[2].remove(user)
-							vote_option[1]-=1
+					votes_table = get_table(self, "votes")
+					for row_index, row in enumerate(votes_table):
+						if user in row["users"]:
+							print row
+							###########3
+							#need to convert to list, remove, then update set the new array once we start da debugs
+							###########
+							row["users"].remove(user)
+							query = "UPDATE votes SET votes = votes-1 WHERE `index` = %s" % row["index"]
+							self.conn.execute(query)
 							self.vote_total -=1
 							send_str = "Vote removed."
 							whisper(user, send_str)
@@ -2348,9 +2365,10 @@ class TwitchBot(irc.IRCClient, object):
 					#close the vote
 					if is_mod(user, self.channel_parsed, user_type):
 						if self.vote_on:
-							self.vote_on = False
+							set_status(self, "vote_dict", False)
 							send_str = "Poll stats: " 
 							if self.vote_total != 0:
+								votes_table = get_table(self, "votes")
 								poll_winner = [['', 0]]
 								for pair in self.vote_arr:
 									key = pair[0]
@@ -2395,55 +2413,67 @@ class TwitchBot(irc.IRCClient, object):
 						whisper(user, send_str)
 						return
 				else:
-					if msg_arr[1].strip() in self.vote_option_arr: 
-							
-							#msg_arr[1] is a vote option
-							#input vote if user hasnt already voted
-							for vote_option_index, vote_option in enumerate(self.vote_arr):
-								if msg_arr[1] == vote_option[0]:
-									#do nothing if they are already in it, if not then find add them and remove them from the one they used to be in
-									if user not in vote_option[2]:
-										self.vote_arr[vote_option_index][1] += 1
-										self.vote_arr[vote_option_index][2].append(user)
-										self.vote_total+=1
-										#if it's not the option they want and they are in it then remove them
-										for old_vote_option_index, old_vote_option in enumerate(self.vote_arr):
-											if old_vote_option[0] != msg_arr[1] and user in old_vote_option[2]:
-												self.vote_arr[old_vote_option_index][2].remove(user)
-												self.vote_arr[old_vote_option_index][1] -= 1
-												self.vote_total-=1
-												send_str = "Vote changed."
-												whisper(user, send_str)
-												break
-										else:
-											send_str = "Vote added."
+					vote_options_table = get_table(self, "vote_options")
+					if msg_arr[1].strip() in vote_options_table: 		
+						votes_table = get_table(self, "votes")
+						#msg_arr[1] is a vote option
+						#input vote if user hasnt already voted
+						for row_index, row in enumerate(votes_table):
+							if msg_arr[1] == row["option"]:
+								#do nothing if they are already in it, if not then find add them and remove them from the one they used to be in
+								#convert row["users"] to list here again
+								if user not in row["users"]:
+									query = "UPDATE votes SET votes = votes+1 WHERE `index` = %s" % row["index"]
+									self.conn.execute(query)
+									#convert to list and add then update
+									votes_table[vote_option_index]["users"].append(user)
+									self.vote_total+=1
+									#if it's not the option they want and they are in it then remove them
+									for old_row_index, old_row in enumerate(votes_table):
+										#convert the users to list
+										if old_row["option"] != msg_arr[1] and user in old_row["users"]:
+											old_row[old_row_index]["users"].remove(user)
+											query = "UPDATE votes SET votes = votes-1 WHERE `index` = %s" % old_row["index"]
+											self.conn.execute(query)
+											self.vote_total-=1
+											send_str = "Vote changed."
 											whisper(user, send_str)
-										return
-									elif user in vote_option[2]:
-										send_str = "You have already voted for that option"
+											break
+									else:
+										send_str = "Vote added."
 										whisper(user, send_str)
-										return#save some time, end this loop if they are already in the option they selected
-									break#this actually shouldn't be possible
-							else:
-								send_str = "Invalid vote option"
-								whisper(user, send_str)
-							return 
+									return
+								elif user in vote_option[2]:
+									send_str = "You have already voted for that option"
+									whisper(user, send_str)
+									return#save some time, end this loop if they are already in the option they selected
+								break#this actually shouldn't be possible
+						else:
+							send_str = "Invalid vote option"
+							whisper(user, send_str)
+						return 
 							
 					elif is_num(msg_arr[1].strip()):
 						vote_choice_index = int(msg_arr[1])
-						if vote_choice_index > 0 and vote_choice_index <= len(self.vote_arr):
-							for vote_option_index, vote_option in enumerate(self.vote_arr):
+						votes_table = get_table(self, "votes")
+						if vote_choice_index > 0 and vote_choice_index <= len(votes_table):
+							for row_index, row in enumerate(votes_table):
 								#do nothing if they are already in it, if not then find add them and remove them from the one they used to be in
-								if vote_choice_index == vote_option_index+1:
-									if user not in vote_option[2]:
-										self.vote_arr[vote_option_index][1] += 1
+								if vote_choice_index == row_index+1:
+									#convert to list
+									if user not in row["users"]:
+										query = "UPDATE votes SET votes = votes+1 WHERE `index` = %s" % row["index"]
+										self.conn.execute(query)
+										#add to list then update set
 										self.vote_arr[vote_option_index][2].append(user)
 										self.vote_total+=1
 										#if it's not the option they want and they are in it then remove them
-										for old_vote_option_index, old_vote_option in enumerate(self.vote_arr):
-											if old_vote_option_index != vote_choice_index-1 and user in old_vote_option[2]:
+										for old_row_index, old_row in enumerate(votes_table):
+											#convert to list(maybe not necessary?)
+											if old_row_index != vote_choice_index-1 and user in old_row["users"]:
 												self.vote_arr[old_vote_option_index][2].remove(user)
-												self.vote_arr[old_vote_option_index][1] -= 1
+												query = "UPDATE votes SET votes = votes-1 WHERE `index` = %s" % old_row["index"]
+												self.conn.execute(query)
 												self.vote_total-=1
 												send_str = "Vote changed."
 												whisper(user, send_str)
@@ -2452,7 +2482,7 @@ class TwitchBot(irc.IRCClient, object):
 											send_str = "Vote added."
 											whisper(user, send_str)
 										return
-									elif user in vote_option[2]:
+									elif user in row["users"]:
 										send_str = "You have already voted for that option"
 										whisper(user, send_str)
 										return#save some time, end this loop if they are already in the option they selected
@@ -2494,8 +2524,8 @@ class TwitchBot(irc.IRCClient, object):
 		if in_front(raffle_str, msg):
 			if self.raffle_on:
 				#avoid duplicates
-				if raffle_str == msg and user not in self.raffle_users:
-					self.raffle_users.append(user)
+				if raffle_str == msg and not check_duplicate(self, "lottery", ["user"], [user]):
+					insert_data(self, "raffle", ["user"], [user])
 					send_str = "You have been added to the raffle."
 					whisper(user, send_str)
 					return
@@ -2509,8 +2539,9 @@ class TwitchBot(irc.IRCClient, object):
 					
 				elif end_raffle_str == msg:
 					if is_mod(user, self.channel_parsed, user_type):
-						if len(self.raffle_users) > 0:
-							winner = self.raffle_users[random.randint(0, (len(self.raffle_users) - 1))]
+						raffle_table = get_table(self, "raffle")
+						if len(raffle_table) > 0:
+							winner = raffle_table[random.randint(0, (len(raffle_table) - 1))]["user"]
 							point_change(self, winner, self.raffle_point_value)
 							if self.lottery_point_value != 1:
 								send_str = "%s has won the raffle and obtained %s points!" % (winner, self.raffle_point_value)
@@ -2520,7 +2551,7 @@ class TwitchBot(irc.IRCClient, object):
 							whisper(winner, whisper_str)
 						else:
 							send_str = "No one joined the raffle, there is no winner." 
-						self.raffle_on = False
+						set_status(self, "raffle", False)
 						clear_table(self, "raffle")
 						
 					else:
@@ -2537,7 +2568,7 @@ class TwitchBot(irc.IRCClient, object):
 			else:
 				if in_front(start_raffle_str, msg):
 					if is_mod(user, self.channel_parsed, user_type):
-						self.raffle_on = True
+						set_status(self, "raffle", True)
 						msg_arr = msg.split()
 						if len(msg_arr) > 2:
 							if is_num(msg_arr[2]):
@@ -2596,10 +2627,7 @@ class TwitchBot(irc.IRCClient, object):
 						self.lottery_users.extend(chatters_json["chatters"]["moderators"])
 						lottery_table = get_table(self, "lottery")
 						if len(lottery_table) > 0:
-							############3
-							#continue implementing the new functions, as well as make this work
-							############
-							winner = lottery_table[random.randint(0, (len(lottery_table) - 1))].encode("utf-8")
+							winner = lottery_table[random.randint(0, (len(lottery_table) - 1))]["user"].encode("utf-8")
 							point_change(self, winner, self.lottery_point_value)
 							if self.lottery_point_value != 1:
 								send_str = "%s has won the lottery and obtained %s points!" % (winner, self.lottery_point_value)
@@ -2609,7 +2637,7 @@ class TwitchBot(irc.IRCClient, object):
 							whisper(winner, whisper_str)
 						else:
 							send_str = "No one joined the lottery, there is no winner." 
-						self.lottery_on = False
+						set_status(self, "lottery", False)
 						clear_table(self, "lottery")
 						
 					else:
@@ -2627,7 +2655,7 @@ class TwitchBot(irc.IRCClient, object):
 			else:
 				if in_front(start_lottery_str, msg):
 					if is_mod(user, self.channel_parsed, user_type):
-						self.lottery_on = True
+						set_status(self, "lottery", True)
 						msg_arr = msg.split()
 						if len(msg_arr) > 2:
 							if is_num(msg_arr[2]):
