@@ -598,46 +598,52 @@ def caps_perc(msg):
 			caps+=1
 	return (caps / len(msg)) * 100
 	
-def warn(user, msg, channel_parsed, self, warn_arr, warn_duration, warn_cooldown, timeout_msg, timeout_duration):
+def warn(user, msg, channel_parsed, self, warn_table, warn_duration, warn_cooldown, timeout_msg, timeout_duration):
 	#function to warn if they havent already been warned, and time them out if they have.
+	query = "SELECT COUNT(*) FROM %s WHERE user = '%s'" % (warn_table, user)
+	res = result_to_dict(self.conn.execute(query))
 	
-	for warn_pair in warn_arr:
-		if user == warn_pair[1]:
-			#check if current time is longer than the warning duration from the last time name was entered
-			current_time = time.time()
-			if (current_time - warn_pair[0] <= warn_cooldown):
-				#timeout user for long duration and remove from array
-				timeout(user, self, timeout_duration)
-				warn_arr.remove(warn_pair)
-				send_str = "No %s allowed (%s)" % (timeout_msg, user.capitalize())
-				self.write(send_str)
-				whisper_msg = "You were timed out for %s in %s (%s)" % (timeout_msg, channel_parsed, parse_sec(timeout_duration))
-				whisper(user, whisper_msg)
-				return warn_arr
-			else:
-				#replace old entry with new one and send warning as well as timeout for warn_duration
-				#short duration
-				timeout(user, self, warn_duration)
-				warn_arr.remove(warn_pair)
-				pair = [current_time, user]
-				warn_arr.append(pair)
-				send_str = "No %s allowed (%s)(warning)" % (timeout_msg, user.capitalize())
-				self.write(send_str)
-				whisper_msg = "You were timed out for %s in %s (%s, warning)" % (timeout_msg, channel_parsed, parse_sec(warn_duration))		
-				whisper(user, whisper_msg)
-				return warn_arr
+	if res[0]["COUNT(*)"] > 0:
+		current_time = time.time()
+		#check if current time is longer than the warning duration from the last time name was entered
+		query = "SELECT * FROM %s WHERE user = '%s' and (%s - set_time <= %s) LIMIT 1" % (warn_table, user, current_time, warn_cooldown)
+		row = result_to_dict(self.conn.execute(query))
+		if row != []:
+			#they did a bad thing in a time less than the cooldown, time out for long duration
+			#timeout user for long duration and remove from array
+			timeout(user, self, timeout_duration)
+			
+			delete_value_handler(self, warn_table, "index", row[0]["index"])
+			send_str = "No %s allowed (%s)" % (timeout_msg, user.capitalize())
+			self.write(send_str)
+			whisper_msg = "You were timed out for %s in %s (%s)" % (timeout_msg, channel_parsed, parse_sec(timeout_duration))
+			whisper(user, whisper_msg)
+		else:
+			#they did a bad thing in a time more than the cooldown, time out for long duration
+			#replace old entry with new one and send warning as well as timeout for warn_duration
+			#short duration
+			query = "SELECT * FROM %s WHERE user = '%s' and (%s - set_time > %s) LIMIT 1" % (warn_table, user, current_time, warn_cooldown)
+			row = result_to_dict(self.conn.execute(query))
+			timeout(user, self, warn_duration)
+			print row
+			delete_value_handler(self, warn_table, "index", row[0]["index"])
+			pair = [current_time, user]
+			insert_data(self, warn_table, ["set_time", "user"], pair)
+			send_str = "No %s allowed (%s)(warning)" % (timeout_msg, user.capitalize())
+			self.write(send_str)
+			whisper_msg = "You were timed out for %s in %s (%s, warning)" % (timeout_msg, channel_parsed, parse_sec(warn_duration))		
+			whisper(user, whisper_msg)
 	else:
 		#add new entry and send warning, with timeout for warn_duration
 		#short duration
 		timeout(user, self, warn_duration)
 		current_time = time.time()
 		pair = [current_time, user]
-		warn_arr.append(pair)
+		insert_data(self, warn_table, ["set_time", "user"], pair)
 		send_str = "No %s allowed (%s)(warning)" % (timeout_msg, user.capitalize())
 		self.write(send_str)
 		whisper_msg = "You were timed out for %s in %s (%s, warning)" % (timeout_msg, channel_parsed, parse_sec(warn_duration))
 		whisper(user, whisper_msg)
-	return warn_arr
 		
 def symbol_count(msg):
 	reg_chars = [',','.',' ','\'','\"','?', ';']
@@ -782,19 +788,20 @@ def insert_permit(self, permit_pair):
 	permit_high_duration = permit_pair[2]
 	
 	if permit_high_type == "permanent":
-		query = "DELETE FROM spam_permits WHERE user = %s and type = permanent"
+		query = "DELETE FROM spam_permits WHERE user = '%s'" % permit_high_user
 		self.conn.execute(query)
 		insert_data(self, "spam_permits", ["set_time", "user", "duration", "type"], permit_pair)
-		return False
+		return True
 	else:
-		query = "SELECT COUNT(*) FROM spam_permits WHERE user = %s and type = 'permanent'"
+		query = "SELECT COUNT(*) FROM spam_permits WHERE user = '%s' and type = 'permanent'" % permit_high_user
 		res = result_to_dict(self.conn.execute(query))
-		if len(res) <= 0:
+		if res[0]["COUNT(*)"] <= 0:
 			#this user does not have a permanent permit, check with the others
-			query = "DELETE FROM spam_permits WHERE type = %s and duration < %d" % (permit_high_type, permit_high_duration)
+			query = "DELETE FROM spam_permits WHERE type = '%s' and duration < %d" % (permit_high_type, permit_high_duration)
 			self.conn.execute(query)
-			query = "SELECT COUNT(*) FROM spam_permits WHERE type = %s and duration > %d" % (permit_high_type, permit_high_duration)
-			if result_to_dict(self.conn.execute(query)) <= 0:
+			query = "SELECT COUNT(*) FROM spam_permits WHERE type = '%s' and duration > %d" % (permit_high_type, permit_high_duration)
+			res = result_to_dict(self.conn.execute(query))
+			if res[0]["COUNT(*)"] <= 0:
 				#as long as there are none that are greater than ours(which means there are now no others of this type in the db), add it
 				insert_data(self, "spam_permits", ["set_time", "user", "duration", "type"], permit_pair)
 				return True
@@ -823,20 +830,29 @@ def get_raw_general_stats(channel_parsed, stat_str):
 
 def point_change(self, user, points):
 	#if points != 0:#don't waste our time if it's 0 points#we actually remove this so that we tell them their new total of points and this may interfere with a custom setting
-	if self.point_system_on:
-		if user not in self.point_users:
-			self.point_users[user] = 0
-		self.point_users[user] += points
+	if get_status(self, "points"):
+		query = "SELECT COUNT(*) FROM point_users WHERE user = %s" % user
+		res = result_to_dict(self.conn.execute(query))
+		if len(res) <= 0:
+			insert_data(self, "point_users", ["user", "points"], [user, 0])
+		query = "UPDATE point_users SET points = points+%d WHERE user = %s" % (points, user)
+		self.conn.execute(query)
 
 def point_balance(self, user):
-	if user not in self.point_users:
-		return 0
-	else:
-		return self.point_users[user]
-
+	query = "SELECT points FROM point_users WHERE user = %s" % user
+	res = result_to_dict(self.conn.execute(query))
+	return res
+	
 def result_to_dict(res):
 	return [dict(row) for row in res]
 
+#ONLY USE THIS FOR DEBUGGING
+def is_empty(self, table):
+	if get_len_table(self, table) > 0:
+		return False
+	else:
+		return True
+		
 def get_len_table(self, table):
 	query = "SELECT COUNT(*) FROM %s" % table
 	res = result_to_dict(self.conn.execute(query))
@@ -846,16 +862,16 @@ def get_len_table(self, table):
 def check_duplicate(self, table, columns, values):
 	columns = "(" + ','.join(x for x in columns) + ")"
 	values = '(' + repr(values)[1:-1] + ')'
-	query = text("SELECT COUNT(*) FROM %s WHERE %s = `%s`" % (table, columns, values))
-	if result_to_dict(self.conn.execute(query)):
+	query = text("SELECT COUNT(*) FROM %s WHERE %s = %s" % (table, columns, values))
+	if result_to_dict(self.conn.execute(query))[0]["COUNT(*)"] > 0:
 		return True
 	else:
 		return False
 		
 def get_status(self, display_id):
-	query = "SELECT feature_status FROM main WHERE display_id = %s" % display_id
+	query = "SELECT feature_status FROM main WHERE display_id = '%s'" % display_id
 	status = result_to_dict(self.conn.execute(query))
-	if status = 1:
+	if status[0]["feature_status"] == 1:
 		return True
 	else:
 		return False
@@ -869,7 +885,39 @@ def set_status(self, feature, status):
 		
 def insert_data(self, table, columns, values):
 	columns = "(" + ','.join(x for x in columns) + ")"
+	if not isinstance(values, list):
+		values = [values]
 	values = '(' + repr(values)[1:-1] + ')'
+	query = text("INSERT INTO %s %s VALUES %s" % (table, columns, values)) 
+	self.conn.execute(query)
+	
+def insert_row_data(self, table, columns, values):
+	columns = "(" + ','.join(x for x in columns) + ")"
+	row_values = ''
+	for value in values:
+		row_values += "(\"" + repr(value)[1:-1] + "\"),"
+	row_values = row_values[:-1] + ";"
+	query = text("INSERT INTO %s %s VALUES %s" % (table, columns, row_values)) 
+	self.conn.execute(query)
+	
+def update_data(self, table, columns, values):
+	if len(columns) > 1:
+		columns = "(`" + ','.join(x for x in columns) + "`)"
+	else:
+		columns = columns[0]
+	values = '("' + repr(values)[1:-1] + '")'
+	query = text("UPDATE %s SET %s = %s" % (table, columns, values)) 
+	self.conn.execute(query)
+
+def get_data(self, table, columns):
+	#Simple way to get data, will likely only be used for the game, title, and topic functions
+	columns = "(" + ','.join(x for x in columns) + ")"
+	query = text("SELECT %s FROM %s" % (table, columns))
+	return result_to_dict(self.conn.execute(query))
+	
+def extend_data(self, table, column, values):
+	columns = "(" + ','.join(x for x in columns) + ")"
+	values = repr(values)[1:-1]
 	query = text("INSERT INTO %s %s VALUES %s" % (table, columns, values)) 
 	self.conn.execute(query)
 ##def update_8ball_table(self, type, 
@@ -917,43 +965,16 @@ class TwitchBot(irc.IRCClient, object):
 		self.channel_parsed = self.channel.replace("#", "")
 		server = 'irc.twitch.tv'
 		
-		self.rol_on = True
-		self.ball_on = True
-		self.banphrase_on = True
-		self.autoreply_on = True
-		self.link_whitelist_on = True
-		self.antispam_on = True
-		self.repeat_antispam_on = True
-		self.emote_antispam_on = True
-		self.caps_antispam_on = True
-		self.fake_purge_antispam_on = True
-		self.skincode_antispam_on = True
-		self.long_msg_antispam_on = True
-		self.symbol_antispam_on = True
-		self.link_antispam_on = True
-		self.long_word_antispam_on = True
-		self.me_antispam_on = True
-		self.ip_antispam_on = True
+		#Database
+		#create database here with the .sql file
+		engine = create_engine("mysql://root@localhost:3306/%s" % self.channel_parsed)
+		self.conn = engine.connect()
 		
-		self.ban_emote_on = True
-		self.emote_stats_on = True
+		#self.ban_emote_on = True
+		#self.emote_stats_on = True
+		
 		self.repeat_on = True
-		self.topic_on = True
-		self.purge_on = True
-		self.math_on = True
-		self.roll_on = True
-		self.coin_on = True
 		self.countdown_on = True
-		self.points_on = True
-		self.slots_on = True
-		self.point_system_on = True
-		
-		self.raffle_on = False
-		self.lottery_on = False
-		self.give_on = True
-		
-		self.vote_on = False
-		self.cmd_on = True
 		
 		self.raffle_users = []
 		self.lottery_users = []
@@ -969,39 +990,25 @@ class TwitchBot(irc.IRCClient, object):
 		self.emote_arr = []
 		self.cmd_arr = []
 		self.countdown_arr = []
+
 		
-		self.caps_warn_arr = []
-		self.emote_warn_arr = []
-		self.fake_purge_warn_arr = []
-		self.skincode_warn_arr = []
-		self.long_msg_warn_arr = []
-		#block_warn_arr = []
-		self.symbol_warn_arr = []
-		self.link_warn_arr = []
-		self.spam_warn_arr = []
-		self.long_word_warn_arr = []
-		self.me_warn_arr = []
-		self.ip_warn_arr = []
-		
-		self.ban_emote_warn_arr = []
-		self.banphrase_warn_arr = []
-		self.link_whitelist_warn_arr = []
-		
-		self.vote_option_arr = []
-		self.vote_dict = {}
 		self.vote_total = 0
 		
-		#################needs to be empty
-		self.topic = 'Any ideas and questions welcome!'
-		self.game = ''
-		self.title = ''
-		
+		#self.topic = 'Any ideas and questions welcome!'
+
 		stream_data = get_json_stream(self.channel_parsed)["streams"]
 		if stream_data:
-			self.game = stream_data[0]["game"]
-			self.title = stream_data[0]["channel"]["status"]
-		
+			game = stream_data[0]["game"]
+			if is_empty(self, "game"):
+				insert_data(self, "game", ["game"], game)
+			title = stream_data[0]["channel"]["status"]
+			if is_empty(self, "title"):
+				insert_data(self, "title", ["title"], title)
+			topic = ""
+			if is_empty(self, "topic"):
+				insert_data(self, "topic", ["topic"], topic)
 			
+		#we should put settings like this in an admin menu, along with the timeout durations and such
 		self.rol_chance = .5
 		self.rol_timeout = 5 #seconds
 		
@@ -1017,14 +1024,19 @@ class TwitchBot(irc.IRCClient, object):
 		
 		self.default_permit_time = 30#seconds
 		self.default_permit_msg_count = 10#msgs
-		self.ball_arr = ["It is certain", "It is decidedly so", "Without a doubt", "Yes, definitely", "You may rely on it", "As I see it, yes", "Most likely", "Outlook good", "Yes", "Signs point to yes", "Reply hazy try again", "Ask again later", "Better not tell you now", "Cannot predict now", "Concentrate and ask again", "Don't count on it", "My reply is no", "My sources say no", "Outlook not so good", "Very doubtful"]
+		#######NOTE: ONLY USE THIS FOR DEBUGGING! AFTER THIS IT SHOULD ALWAYS BE EMPTY AND THIS WILL ONLY BE RUN ONCE!
+		##########
+		if is_empty(self, "8ball_responses"):
+			insert_row_data(self, "8ball_responses", ["responses"], ["It is certain", "It is decidedly so", "Without a doubt", "Yes, definitely", "You may rely on it", "As I see it, yes", "Most likely", "Outlook good", "Yes", "Signs point to yes", "Reply hazy try again", "Ask again later", "Better not tell you now", "Cannot predict now", "Concentrate and ask again", "Don't count on it", "My reply is no", "My sources say no", "Outlook not so good", "Very doubtful"])
+		
 		self.time_unit_arr = ["sec", "secs", "second", "seconds", "min", "mins", "minute", "minutes", "hr", "hrs", "hour", "hours", "day", "days", "week", "weeks"]
-		self.emote_arr = get_emote_list(self.channel_parsed)
-		self.special_emote_arr = ['o_O', 'O_o', 'o_o', 'O_O', ':o', ':O', ':\\', ':/', ':p', ':P', ';p', ';P']
+		#self.emote_arr = get_emote_list(self.channel_parsed)
+		#self.special_emote_arr = ['o_O', 'O_o', 'o_o', 'O_O', ':o', ':O', ':\\', ':/', ':p', ':P', ';p', ';P']
 		#self.emote_arr.extend(self.special_emote_arr)
-		self.count_dict = create_count_dict(self.emote_arr)
+		#self.count_dict = create_count_dict(self.emote_arr)
 		
 		self.reply_args_arr = ["{*USER*}", "{*TO_USER*}", "{*GAME*}", "{*STATUS*}", "{*TOPIC*}", "{*VIEWERS*}", "{*CHATTERS*}", "{*VIEWS*}", "{*FOLLOWERS*}"]
+		#perhaps we should make this vvv a table
 		self.default_cmd_arr = ['!link whitelist', '!permit', '!banphrase', '!autoreply', '!set', '!vote', '!raffle', '!roulette', '!8ball', '!uptime', '!chatters', '!viewers', '!subs', '!subscribers', '!commercial', '!ban emote', '!repeat', '!title', '!topic', '!game', '!purge', '!math', '!roll', '!coin', '!countdown']
 		
 		self.follower_arr = []
@@ -1033,24 +1045,16 @@ class TwitchBot(irc.IRCClient, object):
 		self.follower_arr, new_follower_arr = get_new_followers(self.follower_arr, self.channel_parsed, self)
 		self.viewer_arr, new_viewer_arr = get_new_viewers(self.viewer_arr, self.channel_parsed, self)
 		self.perm_chatter_arr.extend(new_viewer_arr)
-		
-		#Point system
-		self.point_users = {}
-		
+				
 		#Regexes
 		self.link_regex = re.compile(ur'^(?:https?:\/\/)?\w+(?:\.\w{2,})+(?:\/\S+)*$', re.MULTILINE)
 		self.ip_regex= re.compile(ur'^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$\b', re.MULTILINE)
 		
-		#Default additions to autoreply and command arrays		
-		self.cmd_arr.append(["!slap", "{*USER*} slaps {*TO_USER*} around a bit with a large trout."])
-		self.cmd_arr.append(["!shoutout", "Check out twitch.tv/{*TO_USER*} and follow them!"])
-		
-		#Database
-		#need to create db and all the tables if doesn't already exist
-		
-		engine = create_engine("mysql://root@localhost:3306/%s" % self.channel_parsed)
-		self.conn = engine.connect()
-		
+		#Default additions to autoreply and command arrays	
+		if is_empty(self, "commands"):
+			insert_data(self, "commands", ["command", "reply"], ["!slap", "{*USER*} slaps {*TO_USER*} around a bit with a large trout."])
+			insert_data(self, "commands", ["command", "reply"], ["!shoutout", "Check out twitch.tv/{*TO_USER*} and follow them!"])
+			
 		check_loop_repeats = LoopingCall(self.repeat_check)
 		check_loop_repeats.start(0.003)
 		
@@ -1080,10 +1084,10 @@ class TwitchBot(irc.IRCClient, object):
 							link_whitelist = msg_arr[3]
 							if re.search(self.link_regex, link_whitelist):#if is link according to our regex
 								#is a url
-								if check_duplicate(self, table, "link", link_whitelist):
+								if check_duplicate(self, "link_whitelists", ["link"], [link_whitelist]):
 									send_str = "%s is already a whitelisted link." % (link_whitelist)
 								else:
-									insert_data(self, "link_whitelists", "link", link_whitelist)
+									insert_data(self, "link_whitelists", ["link"], link_whitelist)
 									send_str = "%s added to list of whitelisted links." % (link_whitelist)
 							else:
 								send_str = "%s is not a valid link." % (link_whitelist)
@@ -1193,7 +1197,7 @@ class TwitchBot(irc.IRCClient, object):
 									permit_time = self.default_permit_time
 									permit_type = "time"
 									permit_pair = [current_time, permit_user, permit_time, permit_type]
-									if insert_permit(self, permit_pair)
+									if insert_permit(self, permit_pair):
 										send_str = "%s's spam filter has been lifted for %s." % (permit_user, parse_sec_condensed(permit_time))
 									else:
 										send_str = "This user already has a permit with a permanent or longer duration"
@@ -1204,7 +1208,7 @@ class TwitchBot(irc.IRCClient, object):
 										permit_time = self.default_permit_time
 										permit_type = "time"
 										permit_pair = [current_time, permit_user, permit_time, permit_type]
-										if insert_permit(self, permit_pair)
+										if insert_permit(self, permit_pair):
 											send_str = "%s's spam filter has been lifted for %s." % (permit_user, parse_sec_condensed(permit_time))
 										else:
 											send_str = "This user already has a permit with a permanent or longer duration"
@@ -1213,7 +1217,7 @@ class TwitchBot(irc.IRCClient, object):
 										msg_count = self.default_permit_msg_count
 										permit_type = "message"
 										permit_pair = [0, permit_user, msg_count, permit_type]#0 = current msg count
-										if insert_permit(self, permit_pair)
+										if insert_permit(self, permit_pair):
 											send_str = "%s's spam filter has been lifted for %s messages." % (permit_user, msg_count)
 										else:
 											send_str = "This user already has a permit with a permanent or longer duration"
@@ -1221,7 +1225,7 @@ class TwitchBot(irc.IRCClient, object):
 										#!permit add <user> permanent
 										permit_type = "permanent"
 										permit_pair = [0, permit_user, 0, permit_type]#0 = current msg count
-										if insert_permit(self, permit_pair)
+										if insert_permit(self, permit_pair):
 											send_str = "%s's spam filter has been permanently lifted." % (permit_user)
 										else:
 											send_str = "This user already has a permit with a permanent or longer duration"
@@ -1231,7 +1235,7 @@ class TwitchBot(irc.IRCClient, object):
 										permit_time = simplify_num(msg_arr[3])
 										permit_type = "time"
 										permit_pair = [current_time, permit_user, permit_time, permit_type]
-										if insert_permit(self, permit_pair)
+										if insert_permit(self, permit_pair):
 											send_str = "%s's spam filter has been lifted for %s." % (permit_user, parse_sec_condensed(permit_time))
 										else:
 											send_str = "This user already has a permit with a permanent or longer duration"
@@ -1247,7 +1251,7 @@ class TwitchBot(irc.IRCClient, object):
 											permit_time = simplify_num(msg_arr[4])
 											permit_type = "time"
 											permit_pair = [current_time, permit_user, permit_time, permit_type]
-											if insert_permit(self, permit_pair)
+											if insert_permit(self, permit_pair):
 												send_str = "%s's spam filter has been lifted for %s." % (permit_user, parse_sec_condensed(permit_time))
 											else:
 												send_str = "This user already has a permit with a permanent or longer duration"
@@ -1261,7 +1265,7 @@ class TwitchBot(irc.IRCClient, object):
 											msg_count = simplify_num(msg_arr[4])
 											permit_type = "message"
 											permit_pair = [0, permit_user, msg_count, permit_type]#0 = current msg count
-											if insert_permit(self, permit_pair)
+											if insert_permit(self, permit_pair):
 												send_str = "%s's spam filter has been lifted for %s messages." % (permit_user, msg_count)
 											else:
 												send_str = "This user already has a permit with a permanent or longer duration"
@@ -1278,7 +1282,7 @@ class TwitchBot(irc.IRCClient, object):
 											permit_time = convert_to_sec(permit_time, permit_time_unit, self)
 											permit_type = "time"
 											permit_pair = [current_time, permit_user, permit_time, permit_type]
-											if insert_permit(self, permit_pair)
+											if insert_permit(self, permit_pair):
 												send_str = "%s's spam filter has been lifted for %s." % (permit_user, parse_sec_condensed(permit_time))
 											else:
 												send_str = "This user already has a permit with a permanent or longer duration"
@@ -1294,7 +1298,7 @@ class TwitchBot(irc.IRCClient, object):
 										permit_time_unit = msg_arr[5]
 										permit_time = convert_to_sec(permit_time, permit_time_unit, self)
 										permit_type = "time"
-										if insert_permit(self, permit_pair)
+										if insert_permit(self, permit_pair):
 											send_str = "%s's spam filter has been lifted for %s." % (permit_user, parse_sec_condensed(permit_time))
 										else:
 											send_str = "This user already has a permit with a permanent or longer duration"
@@ -1320,7 +1324,7 @@ class TwitchBot(irc.IRCClient, object):
 						if len(msg_arr) == 3:
 							permit_user = msg_arr[2]
 							if is_num(permit_user):
-								delete_status = delete_index_handler(self, "spam_permits", permit_user):
+								delete_status = delete_index_handler(self, "spam_permits", permit_user)
 								if delete_status:
 									if delete_status["type"] == "permanent":
 										send_str = "Permanent permit %s removed at index %s." % (delete_status["user"], permit_user)
@@ -1352,23 +1356,23 @@ class TwitchBot(irc.IRCClient, object):
 							send_str = "No users with active permits." 
 						else:
 							send_str = "Users with active permits: " 
-							for row_index, row in enumurate(permits_table):
+							for row_index, row in enumerate(permits_table):
 								if (row_index != len(permits_table) -1):
 									#every element but last one
-									if permits_table["type"] == "time":
-										send_str += "(%s.) %s : %s, " % (row_index+1, permits_table["user"], parse_sec_condensed(permits_table["duration"]))
-									elif permits_table["type"] == "message":
-										send_str += "(%s.) %s : %s messages, " % (row_index+1, permits_table["user"], permits_table["duration"])
+									if row["type"] == "time":
+										send_str += "(%s.) %s : %s, " % (row_index+1, row["user"], parse_sec_condensed(row["duration"]))
+									elif row["type"] == "message":
+										send_str += "(%s.) %s : %s messages, " % (row_index+1, row["user"], row["duration"])
 									else:
-										send_str += "(%s.) %s : permanent, " % (row_index+1, permits_table["user"])
+										send_str += "(%s.) %s : permanent, " % (row_index+1, row["user"])
 								else:
 									#last element in arr
-									if permits_table["type"] == "time":
-										send_str += "(%s.) %s : %s." % (row_index+1, permits_table["user"], parse_sec_condensed(permits_table["duration"]))
-									elif permits_table["type"] == "message":
-										send_str += "(%s.) %s : %s messages." % (row_index+1, permits_table["user"], permits_table["duration"])
+									if row["type"] == "time":
+										send_str += "(%s.) %s : %s." % (row_index+1, row["user"], parse_sec_condensed(row["duration"]))
+									elif row["type"] == "message":
+										send_str += "(%s.) %s : %s messages." % (row_index+1, row["user"], row["duration"])
 									else:
-										send_str += "(%s.) %s : permanent." % (row_index+1, permits_table["user"])
+										send_str += "(%s.) %s : permanent." % (row_index+1, row["user"])
 						if not is_mod(user, self.channel_parsed, user_type):
 							whisper(user, send_str)		
 							return		
@@ -1395,7 +1399,7 @@ class TwitchBot(irc.IRCClient, object):
 								permit_time = self.default_permit_time
 								permit_type = "time"
 								permit_pair = [current_time, permit_user, permit_time, permit_type]
-								if insert_permit(self, permit_pair)
+								if insert_permit(self, permit_pair):
 									send_str = "%s's spam filter has been lifted for %s." % (permit_user, parse_sec_condensed(permit_time))
 								else:
 									send_str = "This user already has a permit with a permanent or longer duration"
@@ -1406,7 +1410,7 @@ class TwitchBot(irc.IRCClient, object):
 									permit_time = self.default_permit_time
 									permit_type = "time"
 									permit_pair = [current_time, permit_user, permit_time, permit_type]
-									if insert_permit(self, permit_pair)
+									if insert_permit(self, permit_pair):
 										send_str = "%s's spam filter has been lifted for %s." % (permit_user, parse_sec_condensed(permit_time))
 									else:
 										send_str = "This user already has a permit with a permanent or longer duration"
@@ -1415,7 +1419,7 @@ class TwitchBot(irc.IRCClient, object):
 									msg_count = self.default_permit_msg_count
 									permit_type = "message"
 									permit_pair = [0, permit_user, msg_count, permit_type]#0 = current msg count
-									if insert_permit(self, permit_pair)
+									if insert_permit(self, permit_pair):
 										send_str = "%s's spam filter has been lifted for %s messages." % (permit_user, msg_count)
 									else:
 										send_str = "This user already has a permit with a permanent or longer duration"
@@ -1423,7 +1427,7 @@ class TwitchBot(irc.IRCClient, object):
 									#!permit <user> permanent
 									permit_type = "permanent"
 									permit_pair = [0, permit_user, 0, permit_type]#0 = current msg count
-									if insert_permit(self, permit_pair)
+									if insert_permit(self, permit_pair):
 										send_str = "%s's spam filter has been permanently lifted." % (permit_user)
 									else:
 										send_str = "This user already has a permit with a permanent or longer duration"
@@ -1433,7 +1437,7 @@ class TwitchBot(irc.IRCClient, object):
 									permit_time = simplify_num(msg_arr[2])
 									permit_type = "time"
 									permit_pair = [current_time, permit_user, permit_time, permit_type]
-									if insert_permit(self, permit_pair)
+									if insert_permit(self, permit_pair):
 										send_str = "%s's spam filter has been lifted for %s." % (permit_user, parse_sec_condensed(permit_time))
 									else:
 										send_str = "This user already has a permit with a permanent or longer duration"
@@ -1449,7 +1453,7 @@ class TwitchBot(irc.IRCClient, object):
 										permit_time = simplify_num(msg_arr[3])
 										permit_type = "time"
 										permit_pair = [current_time, permit_user, permit_time, permit_type]
-										if insert_permit(self, permit_pair)
+										if insert_permit(self, permit_pair):
 											send_str = "%s's spam filter has been lifted for %s." % (permit_user, parse_sec_condensed(permit_time))
 										else:
 											send_str = "This user already has a permit with a permanent or longer duration"
@@ -1463,7 +1467,7 @@ class TwitchBot(irc.IRCClient, object):
 										msg_count = simplify_num(msg_arr[3])
 										permit_type = "message"
 										permit_pair = [0, permit_user, msg_count, permit_type]#0 = current msg count
-										if insert_permit(self, permit_pair)
+										if insert_permit(self, permit_pair):
 											send_str = "%s's spam filter has been lifted for %s messages." % (permit_user, msg_count)
 										else:
 											send_str = "This user already has a permit with a permanent or longer duration"
@@ -1480,7 +1484,7 @@ class TwitchBot(irc.IRCClient, object):
 										permit_time = convert_to_sec(permit_time, permit_time_unit, self)
 										permit_type = "time"
 										permit_pair = [current_time, permit_user, permit_time, permit_type]
-										if insert_permit(self, permit_pair)
+										if insert_permit(self, permit_pair):
 											send_str = "%s's spam filter has been lifted for %s." % (permit_user, parse_sec_condensed(permit_time))
 										else:
 											send_str = "This user already has a permit with a permanent or longer duration"
@@ -1501,7 +1505,7 @@ class TwitchBot(irc.IRCClient, object):
 									permit_time = convert_to_sec(permit_time, permit_time_unit, self)
 									permit_type = "time"
 									permit_pair = [current_time, permit_user, permit_time, permit_type]
-									if insert_permit(self, permit_pair)
+									if insert_permit(self, permit_pair):
 										send_str = "%s's spam filter has been lifted for %s." % (permit_user, parse_sec_condensed(permit_time))
 									else:
 										send_str = "This user already has a permit with a permanent or longer duration"
@@ -1680,7 +1684,7 @@ class TwitchBot(irc.IRCClient, object):
 							if word_count(msg, emote) != 0:
 								msg_emote_count += msg.count(emote)
 							if msg_emote_count >= emote_max:
-								self.emote_warn_arr = warn(user, msg, channel_parsed, self, self.emote_warn_arr, emote_warn_duration, emote_warn_cooldown, emote_timeout_msg, emote_timeout_duration)
+								warn(user, msg, channel_parsed, self, "emote_warn", emote_warn_duration, emote_warn_cooldown, emote_timeout_msg, emote_timeout_duration)
 								return True
 					'''#ban emotes
 					if get_status(self, ":
@@ -1693,29 +1697,29 @@ class TwitchBot(irc.IRCClient, object):
 					if get_status(self, "banphrases"):
 						for banphrase in self.banphrase_arr:
 							if banphrase in msg:
-								self.banphrase_warn_arr = warn(user, msg, channel_parsed, self, self.banphrase_warn_arr, banphrase_warn_duration, banphrase_warn_cooldown, banphrase_timeout_msg, banphrase_timeout_duration)
+								warn(user, msg, channel_parsed, self, "banphrase_warn", banphrase_warn_duration, banphrase_warn_cooldown, banphrase_timeout_msg, banphrase_timeout_duration)
 								return True
 								
 					#caps spam
 					if get_status(self, "caps_antispam"):
 						if len(msg) >= caps_perc_min_msg_len:
 							if caps_perc(msg) >= 60:
-								self.caps_warn_arr = warn(user, msg, channel_parsed, self, self.caps_warn_arr, caps_warn_duration, caps_warn_cooldown, caps_timeout_msg, caps_timeout_duration)
+								warn(user, msg, channel_parsed, self, "caps_warn", caps_warn_duration, caps_warn_cooldown, caps_timeout_msg, caps_timeout_duration)
 								return True
 					#fake purges
 					if get_status(self, "fake_purge_antispam"):
 						if msg in fake_purge_arr:
-							self.fake_purge_warn_arr = warn(user, msg, channel_parsed, self, self.fake_purge_warn_arr, fake_purge_warn_duration, fake_purge_warn_cooldown, fake_purge_timeout_msg, fake_purge_timeout_duration)
+							warn(user, msg, channel_parsed, self, "fake_purge_warn", fake_purge_warn_duration, fake_purge_warn_cooldown, fake_purge_timeout_msg, fake_purge_timeout_duration)
 							return True
 					#!skincode
 					if get_status(self, "skincode_antispam"):
 						if in_front(skincode_msg, msg):
-							self.skincode_warn_arr = warn(user, msg, channel_parsed, self, self.skincode_warn_arr, skincode_warn_duration, skincode_warn_cooldown, skincode_timeout_msg, skincode_timeout_duration)
+							warn(user, msg, channel_parsed, self, "skincode_warn", skincode_warn_duration, skincode_warn_cooldown, skincode_timeout_msg, skincode_timeout_duration)
 							return True
 					#long messages
 					if get_status(self, "long_message_antispam"):
 						if len(msg) > msg_length_max:
-							self.long_msg_warn_arr = warn(user, msg, channel_parsed, self, self.long_msg_warn_arr, long_msg_warn_duration, long_msg_warn_cooldown, long_msg_timeout_msg, long_msg_timeout_duration)
+							warn(user, msg, channel_parsed, self, "long_msg_warn", long_msg_warn_duration, long_msg_warn_cooldown, long_msg_timeout_msg, long_msg_timeout_duration)
 							return True
 					
 					#block symbols
@@ -1731,7 +1735,7 @@ class TwitchBot(irc.IRCClient, object):
 							symbol_perc = float(symbol_num) / len(msg)
 							#if the limits are exceeded for num or percentage
 							if symbol_num > max_symbol_num or symbol_perc > max_symbol_perc:
-								self.symbol_warn_arr = warn(user, msg, channel_parsed, self, self.symbol_warn_arr, symbol_warn_duration, symbol_warn_cooldown, symbol_timeout_msg, symbol_timeout_duration)
+								warn(user, msg, channel_parsed, self, "symbol_warn", symbol_warn_duration, symbol_warn_cooldown, symbol_timeout_msg, symbol_timeout_duration)
 								return True
 					#links
 					#need a way to parse out the link exactly, instead of just checking if ours is in the link
@@ -1748,7 +1752,7 @@ class TwitchBot(irc.IRCClient, object):
 										#however if they are all in the word, it will do the else statement
 										for link_wcard_part in link_whitelist_wcard:
 											if link_wcard_part not in word:#time them out and return
-												self.link_whitelist_warn_arr = warn(user, msg, channel_parsed, self, self.link_whitelist_warn_arr, link_whitelist_warn_duration, link_whitelist_warn_cooldown, link_whitelist_timeout_msg, link_whitelist_timeout_duration)
+												warn(user, msg, channel_parsed, self, "link_whitelist_warn", link_whitelist_warn_duration, link_whitelist_warn_cooldown, link_whitelist_timeout_msg, link_whitelist_timeout_duration)
 												return True
 										else:#the link was a pardoned one, let them free
 											break
@@ -1757,7 +1761,7 @@ class TwitchBot(irc.IRCClient, object):
 											break
 								else:
 									#link isn't whitelisted, time out user 
-									self.link_whitelist_warn_arr = warn(user, msg, channel_parsed, self, self.link_whitelist_warn_arr, link_whitelist_warn_duration, link_whitelist_warn_cooldown, link_whitelist_timeout_msg, link_whitelist_timeout_duration)
+									warn(user, msg, channel_parsed, self, "link_whitelist_warn", link_whitelist_warn_duration, link_whitelist_warn_cooldown, link_whitelist_timeout_msg, link_whitelist_timeout_duration)
 									return True
 							
 					#these need to be different types
@@ -1766,12 +1770,12 @@ class TwitchBot(irc.IRCClient, object):
 					if get_status(self, "long_word_antispam"):
 						for word in msg_arr:
 							if len(word) > long_word_limit and '\n' not in word:
-								self.long_word_warn_arr = warn(user, msg, channel_parsed, self, self.long_word_warn_arr, long_word_warn_duration, long_word_warn_cooldown, long_word_timeout_msg, long_word_timeout_duration)
+								warn(user, msg, channel_parsed, self, "long_word_warn", long_word_warn_duration, long_word_warn_cooldown, long_word_timeout_msg, long_word_timeout_duration)
 								return True
 					#/me
 					if get_status(self, "me_antispam"):
 						if in_front(me_msg, msg):
-							self.me_warn_arr = warn(user, msg, channel_parsed, self, self.me_warn_arr, me_warn_duration, me_warn_cooldown, me_timeout_msg, me_timeout_duration)
+							warn(user, msg, channel_parsed, self, "me_warn", me_warn_duration, me_warn_cooldown, me_timeout_msg, me_timeout_duration)
 							return True
 						
 					#ip addresses
@@ -1779,7 +1783,7 @@ class TwitchBot(irc.IRCClient, object):
 						for word in msg.split(" "):
 							#we need to determine links for this sole reason
 							if re.search(self.ip_regex, word):#if is ip address according to our regex
-								self.ip_warn_arr = warn(user, msg, channel_parsed, self, self.ip_warn_arr, ip_warn_duration, ip_warn_cooldown, ip_timeout_msg, ip_timeout_duration)
+								warn(user, msg, channel_parsed, self, "ip_warn", ip_warn_duration, ip_warn_cooldown, ip_timeout_msg, ip_timeout_duration)
 								return True
 					'''the complicated general antispam that moobot offers
 					if len(msg) > min_spam_chars:
@@ -1809,7 +1813,7 @@ class TwitchBot(irc.IRCClient, object):
 							if check_duplicate(self, "banphrases", "banphrase", banphrase):
 								send_str = "%s is already a banphrase." % (banphrase)
 							else:
-								insert_data(self, "banphrases", "banphrase", banphrase)
+								insert_data(self, "banphrases", ["banphrase"], banphrase)
 								send_str = "\"%s\" added to list of banphrases." % (banphrase)
 						else:
 							send_str = "Usage: \"!banphrase add <banphrase>\"" 
@@ -1827,7 +1831,7 @@ class TwitchBot(irc.IRCClient, object):
 							if is_num(banphrase):
 								#we add on one to the actual index because users prefer to start with 1, rather than 0.
 								banphrase = int(banphrase)
-								delete_status = delete_index_handler(self, "banphrases", banphrase):
+								delete_status = delete_index_handler(self, "banphrases", banphrase)
 								if delete_status:
 									send_str = "Banphrase \"%s\" removed at index %s." % (delete_status["banphrase"], banphrase)
 								else:
@@ -2034,11 +2038,11 @@ class TwitchBot(irc.IRCClient, object):
 										reply_to_user = to_user_part.split()[0]#the first word after the autoreply, should be the to user
 										reply = reply.replace("{*TO_USER*}", str(reply_to_user))
 									elif word == "{*GAME*}":
-										reply = reply.replace("{*GAME*}", self.game)
+										reply = reply.replace("{*GAME*}", get_data(self, "game", ["game"]))
 									elif word == "{*STATUS*}":
-										reply = reply.replace("{*STATUS*}", self.title)
+										reply = reply.replace("{*STATUS*}", get_data(self, "title", ["title"]))
 									elif word == "{*TOPIC*}":
-										reply = reply.replace("{*TOPIC*}", self.topic)
+										reply = reply.replace("{*TOPIC*}", get_data(self, "topic", ["topic"]))
 									elif word == "{*VIEWERS*}":
 										viewer_count = get_raw_general_stats(channel_parsed, 'viewers')
 										reply = reply.replace("{*VIEWERS*}", str(viewer_count))
@@ -2183,6 +2187,10 @@ class TwitchBot(irc.IRCClient, object):
 					elif in_front(set_spam_permits_str, msg):
 						set_value(self, "spam_permits", "spam permits", msg_arr)
 						
+					else:
+						send_str = "Usage: \"!set <feature> on/off \"." 
+						whisper(user, send_str)
+						return		
 					#ban emotes
 					'''elif in_front(set_ban_emotes_str, msg):
 						self.ban_emotes_on = set_value(self, self.ban_emotes_on, "ban emotes", msg_arr)
@@ -2191,10 +2199,7 @@ class TwitchBot(irc.IRCClient, object):
 					elif in_front(set_emote_stats_str, msg):
 						self.emote_stats_on = set_value(self, self.emote_stats_on, "emote stats", msg_arr)
 					'''	
-					else:
-						send_str = "Usage: \"!set <feature> on/off \"." 
-						whisper(user, send_str)
-						return	
+					
 				elif len(msg_arr) == 5:
 					#fake purge antispam
 					if in_front(set_fake_purge_antispam_str, msg):
@@ -2580,7 +2585,7 @@ class TwitchBot(irc.IRCClient, object):
 								send_str = "%s has won the raffle and obtained %s points!" % (winner, self.raffle_point_value)
 							else:
 								send_str = "%s has won the raffle and obtained %s point!" % (winner, self.raffle_point_value)
-							whisper_str = "You now have %s points in this channel." % self.point_users[winner]
+							whisper_str = "You now have %s points in this channel." % point_balance(self, winner)
 							whisper(winner, whisper_str)
 						else:
 							send_str = "No one joined the raffle, there is no winner." 
@@ -2656,8 +2661,8 @@ class TwitchBot(irc.IRCClient, object):
 					if is_mod(user, self.channel_parsed, user_type):
 						chatters_json = get_json_chatters(channel_parsed)
 						#if chatters_json["chatters"]["viewers"]:#should be run in an existing channel so this should always be true
-						self.lottery_users.extend(chatters_json["chatters"]["viewers"])
-						self.lottery_users.extend(chatters_json["chatters"]["moderators"])
+						extend_data(self, "lottery", ["user"], chatters_json["chatters"]["viewers"])
+						extend_data(self, "lottery", ["user"], chatters_json["chatters"]["moderators"])
 						lottery_table = get_table(self, "lottery")
 						if len(lottery_table) > 0:
 							winner = lottery_table[random.randint(0, (len(lottery_table) - 1))]["user"].encode("utf-8")
@@ -2666,7 +2671,7 @@ class TwitchBot(irc.IRCClient, object):
 								send_str = "%s has won the lottery and obtained %s points!" % (winner, self.lottery_point_value)
 							else:
 								send_str = "%s has won the lottery and obtained %s point!" % (winner, self.lottery_point_value)
-							whisper_str = "You now have %s points in this channel." % self.point_users[winner]
+							whisper_str = "You now have %s points in this channel." % point_balance(self, winner)
 							whisper(winner, whisper_str)
 						else:
 							send_str = "No one joined the lottery, there is no winner." 
@@ -3000,8 +3005,9 @@ class TwitchBot(irc.IRCClient, object):
 				stat_data = get_json_stream(channel_parsed.lower().strip())
 				stat_data= stat_data["streams"]
 				if stat_data:
-					if self.game != '':
-						send_str = "%s is playing %s for %s viewers." % (channel_parsed.capitalize(), self.game, stat_data[0]["viewers"])
+					game = get_data(self, "game", ["game"])
+					if game != '':
+						send_str = "%s is playing %s for %s viewers." % (channel_parsed.capitalize(), game, stat_data[0]["viewers"])
 					else:
 						send_str = "%s is not playing a game, however there are %s viewers" % (channel_parsed.capitalize(), stat_data[0]["viewers"])
 				else:
@@ -3369,8 +3375,8 @@ class TwitchBot(irc.IRCClient, object):
 		cmd_rem_str = "!command remove"
 		cmd_list_str = "!command list"
 		cmd_clr_str = "!command clear"
-		
-		if get_status(self, "commands"):
+		cmd_on = get_status(self, "commands")
+		if cmd_on:
 			if in_front(cmd_str, msg):
 				#add commands
 				if in_front(cmd_add_str, msg):
@@ -3485,7 +3491,7 @@ class TwitchBot(irc.IRCClient, object):
 				################################################################################
 				####THIS NEEDS TO NOT BE IS MOD BUT DEPEND ON THE LEVEL PARAMETER OF THE COMMAND
 				################################################################################
-				if self.cmd_on:
+				if cmd_on:
 					for cmd_pair in self.cmd_arr:
 						try:
 							cmd_index = msg.index(cmd_pair[0])
@@ -3501,11 +3507,11 @@ class TwitchBot(irc.IRCClient, object):
 											reply_to_user = to_user_part.split()[0]#the first word after the autoreply, should be the to user
 											reply = reply.replace("{*TO_USER*}", str(reply_to_user))
 										elif word == "{*GAME*}":
-											reply = reply.replace("{*GAME*}", self.game)
+											reply = reply.replace("{*GAME*}", get_data(self, "game", ["game"]))
 										elif word == "{*STATUS*}":
-											reply = reply.replace("{*STATUS*}", self.title)
+											reply = reply.replace("{*STATUS*}", get_data(self, "title", ["title"]))
 										elif word == "{*TOPIC*}":
-											reply = reply.replace("{*TOPIC*}", self.topic)
+											reply = reply.replace("{*TOPIC*}", get_data(self, "topic", ["topic"]))
 										elif word == "{*VIEWERS*}":
 											viewer_count = get_raw_general_stats(channel_parsed, 'viewers')
 											reply = reply.replace("{*VIEWERS*}", str(viewer_count))
@@ -3647,26 +3653,34 @@ class TwitchBot(irc.IRCClient, object):
 		if in_front(title_str, msg) or in_front(status_str, msg):
 			if len(msg_arr) > 1:
 				if is_streamer(user, channel_parsed):
-					self.title = msg_arr[1]
-					send_str = "Title changed to \"%s\"" % msg_arr[1]
+					title = msg_arr[1]
+					update_data(self, "title", ["title"], title)
+					send_str = "Title changed to \"%s\"" % title
 					self.write(send_str)
 					url = "https://api.twitch.tv/kraken/channels/%s?oauth_token=%s" % (channel_parsed, access_token)
-					data = json.dumps({'channel': {'status': self.title}})
+					data = json.dumps({'channel': {'status': title}})
 					headers = {'content-type': 'application/json', 'Accept': 'application/vnd.twitchtv.v3+json'}
 					r = requests.put(url, data=data, headers=headers)
 				else:
 					send_str = "You have to be the streamer to change the channel title."
 					whisper(user, send_str)
 			else:
-				if self.title:
-					send_str = "The current title is: \"%s\"" % self.title.encode("utf-8")
+				title = get_data(self, "title", ["title"])
+				if title:
+					title = title[0]["title"]
+					send_str = "The current title is: \"%s\"" % title.encode("utf-8")
 					if is_mod(user, channel_parsed, user_type):
 						self.write(send_str)
 					else:
 						whisper(user, send_str)
 				else:	
 					channel_data = get_json_stream(channel_parsed)
-					self.title = channel_data["streams"][0]["channel"]["status"]
+					title = channel_data["streams"][0]["channel"]["status"]
+					send_str = "The current title is: \"%s\"" % title.encode("utf-8")
+					if is_mod(user, channel_parsed, user_type):
+						self.write(send_str)
+					else:
+						whisper(user, send_str)
 		else:
 			return False
 			
@@ -3676,50 +3690,69 @@ class TwitchBot(irc.IRCClient, object):
 		if in_front(game_str, msg):
 			if len(msg_arr) > 1:
 				if is_streamer(user, channel_parsed):
-					self.game = msg_arr[1]
-					send_str = "Game changed to \"%s\"" % msg_arr[1]
+					game = msg_arr[1]
+					update_data(self, "game", ["game"], game)
+					send_str = "Game changed to \"%s\"" % game
 					self.write(send_str)
 					url = "https://api.twitch.tv/kraken/channels/%s?oauth_token=%s" % (channel_parsed, access_token)
-					data = json.dumps({'channel': {'game': self.game}})
+					data = json.dumps({'channel': {'game': game}})
 					headers = {'content-type': 'application/json', 'Accept': 'application/vnd.twitchtv.v3+json'}
 					r = requests.put(url, data=data, headers=headers)
 				else:
 					send_str = "You have to be the streamer to change the channel game"
 					whisper(user, send_str)
 			else:
-				if self.game != "":
-					if self.game == False:
+				#gonna need to see what the output is from this and edit accordingly
+				game = get_data(self, "game", ["game"])[0]["game"]
+				#if they want game and it's equal to "", then get the game and check accordingly
+				if game != "":
+					if game == False:
 						send_str = "%s is not playing a game." % channel_parsed.capitalize()
 					else:
-						send_str = "The current game is: \"%s\"" % self.game.encode("utf-8")
+						send_str = "The current game is: \"%s\"" % game.encode("utf-8")
 					if is_mod(user, channel_parsed, user_type):
 						self.write(send_str)
+						return
 					else:
 						whisper(user, send_str)
+						return
 				else:	
+					#get the new game and then print accordingly
 					channel_data = get_json_stream(channel_parsed)
-					self.game = channel_data["streams"][0]["game"]
-					if not self.game:
-						self.game = False
+					game = channel_data["streams"][0]["game"]
+					if not game:
+						game = False
+						
+					if game == False:
+						send_str = "%s is not playing a game." % channel_parsed.capitalize()
+					else:
+						send_str = "The current game is: \"%s\"" % game.encode("utf-8")
+					if is_mod(user, channel_parsed, user_type):
+						self.write(send_str)
+						return
+					else:
+						whisper(user, send_str)
+						return
 		else:
 			return False
 			
 	def topic_parse(self, user, msg, channel_parsed, user_type):
 		topic_str = "!topic"
 		
-		if self.topic_on:
+		if get_status(self, "topic"):
 			msg_arr = msg.split(" ", 1)
 			if in_front(topic_str, msg):
 				if len(msg_arr) > 1:
 					if is_mod(user, channel_parsed, user_type):
-						self.topic = msg_arr[1]
+						update_data(self, "topic", ["topic"], msg_arr[1])
 						send_str = "Topic changed to \"%s\"" % msg_arr[1]
 						self.write(send_str)
 					else:
 						send_str = "You have to be a mod to change the channel topic"
 						whisper(user, send_str)
 				else:
-					send_str = "The current topic is: \"%s\"" % self.topic
+					topic = get_data(self, "topic", ["topic"])[0]["topic"]
+					send_str = "The current topic is: \"%s\"" % topic
 					if is_mod(user, channel_parsed, user_type):
 						self.write(send_str)
 					else:
@@ -3902,10 +3935,8 @@ class TwitchBot(irc.IRCClient, object):
 							if is_num(countdown_cmd):
 								countdown_cmd = int(countdown_cmd)
 								delete_status = delete_index_handler(self, "countdowns", countdown_cmd)
-									send_str = "Countdown command \"%s\" with expiration time %s removed at index %s." % (self.countdown_arr[int(countdown_cmd)-1][1], parse_sec_condensed(self.countdown_arr[int(countdown_cmd)-1][2]), countdown_cmd)
-									
-									#should be the same index as the pair, after all.
-									del self.countdown_arr[int(countdown_cmd)-1]
+								if delete_status:
+									send_str = "Countdown command \"%s\" with expiration time %s removed at index %s." % (delete_status["command"], parse_sec_condensed(delete_status["duration"]), countdown_cmd)
 								else:
 									send_str = "Invalid index for countdown command removal." 
 							else:
@@ -3972,8 +4003,8 @@ class TwitchBot(irc.IRCClient, object):
 				if len(msg_arr) > 1:
 					if is_mod(user, channel_parsed, user_type):
 						point_user = msg_arr[1]
-						if point_user in self.point_users:
-							points_num = self.point_users[point_user]
+						points_num = point_balance(self, point_user)
+						if points_num:
 							if points_num != 1:
 								send_str = "%s has %s points in this channel." % (point_user, points_num)
 							else:
@@ -3985,8 +4016,8 @@ class TwitchBot(irc.IRCClient, object):
 					else:
 						send_str = "You have to be a mod to get the points of other users"
 				elif len(msg_arr) == 1:
-					if user in self.point_users:
-						points_num = self.point_users[user]
+					points_num = point_balance(self, point_user)
+					if points_num:
 						if points_num != 1:
 							send_str = "%s, you have %s points in this channel" % (user, points_num)
 						else:
@@ -4088,7 +4119,7 @@ class TwitchBot(irc.IRCClient, object):
 					send_str += " Better luck next time!"
 				point_change(self, user, slot_point_value)
 				self.write(send_str)
-				send_str = "You now have %s points in this channel." % self.point_users[user]
+				send_str = "You now have %s points in this channel." % point_balance(self, user)
 				whisper(user, send_str)
 			else:
 				return False
@@ -4167,11 +4198,13 @@ class TwitchBot(irc.IRCClient, object):
 		current_time = time.time()
 		#[current_msg_count, user, msg_count, type]
 		#[current_time, user, permit_time, type]
+		#Take the message and add each word to the word frequency database
 		
 		###new viewers/chatters
 		#needs to be reassigned every time so that we keep the topic up to date
-		self.welcome_msg = "Welcome to the channel! The current topic is \"%s\""  % self.topic
-		self.welcome_back_msg = "Welcome back! The current topic is \"%s\""  % self.topic
+		topic = get_data(self, "topic", ["topic"])
+		self.welcome_msg = "Welcome to the channel! The current topic is \"%s\""  % topic
+		self.welcome_back_msg = "Welcome back! The current topic is \"%s\""  % topic
 		'''if user not in self.chatter_arr:#so that we don't say "Welcome!" until we know they aren't a lurker
 			self.chatter_arr.append(user)
 			if not is_streamer(user, self.channel_parsed):
@@ -4281,8 +4314,8 @@ class TwitchBot(irc.IRCClient, object):
 		if self.commercial_parse(user, msg, self.channel_parsed, user_type) != False:
 			return
 		
-		if self.ban_emote_parse(user, msg, self.channel_parsed, user_type) != False:
-			return
+		#if self.ban_emote_parse(user, msg, self.channel_parsed, user_type) != False:
+			#return
 			
 		if self.repeat_parse(user, msg, self.channel_parsed, user_type) != False:
 			return
@@ -4290,8 +4323,8 @@ class TwitchBot(irc.IRCClient, object):
 		if self.custom_command_parse(user, msg, self.channel_parsed, user_type) != False:
 			return
 		
-		if self.emote_stats_parse(user, msg, self.channel_parsed, user_type) != False:
-			return
+		#if self.emote_stats_parse(user, msg, self.channel_parsed, user_type) != False:
+			#return
 		
 		if self.mods_parse(user, msg, self.channel_parsed, user_type) != False:
 			return
