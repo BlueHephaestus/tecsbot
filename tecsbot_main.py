@@ -129,6 +129,13 @@ need uptime_on, topic, viewers etc
 is get_status fast enough for the checks? oh maybe we could only check when about to send them??
 make it show it shows how much time is left in lists for countdowns, permits, etc.
 	if we do this, we will have to always be executing a fuckton of queries. Let's just do it for messages
+######
+alright so we need to log all chat to that new database
+	we can keep track of the total words sent since we joined, or we can do the better thing and just do since online
+	only track chat while stream is online
+	when it goes offline, clear the table of all entries with that channel value
+	id	channel		time	user	message
+##########
 """
 '''misc
  function loadEmotes() { $.getJSON("https://api.betterttv.net/emotes").done(function(data) { $emotes.text(''); parseEmotes(data.emotes); }).fail(function() { $('#emote').text("Error loading emotes.."); }); }
@@ -255,6 +262,10 @@ client_id = "jpf2a90oon0wqdnno5ygircwgomt9rz"
 whisper_msg = ""
 whisper_user = ""
 
+#Chat Log Database
+chat_log_engine = create_engine("mysql://root@localhost:3306/tecsbot_chat_log")
+chat_log_conn = chat_log_engine.connect()
+
 #for debugging
 def full_exit():
 	os._exit(1)
@@ -306,14 +317,6 @@ def print_dict_by_value(dictionary):
 			print "%s:\t\t%s" % (key, value[0])
 		else:
 			print "%s:\t%s" % (key, value[0])
-
-def find_per_min(emote, count_dict, channel_parsed):
-	emote_count = count_dict[emote][0]
-	#this number is from the start of the program to the current time of the query, 
-	#giving the amount of minutes from the start of the program.
-	minute = get_uptime_min(channel_parsed)
-	emote_per_min = emote_count / minute
-	return emote_per_min
 
 def get_json_stream(channel_parsed):
 	'''Unhandled exception in thread started by <bound method channel_bot_start.main of <__main__.channel_bot_start object at 0x0000000002C4D828>>
@@ -816,7 +819,8 @@ def prettify_num(num):
 		if float(num) < 0:#so it doesn't screw up on the negative sign
 			num = num * -1
 			num_negative = True
-			
+		else:
+			num_negative = False
 		num = list(reversed(list(str(num))))#converts from int into reversed list
 		for num_index in range(len(num)):#go through indexes of reversed list
 			if num_index != len(num) - 1:#if not last element
@@ -1054,6 +1058,369 @@ def get_table(self, table):
 def clear_table(self, table):
 	query = "DELETE FROM %s" % table
 	self.conn.execute(query)
+
+def database_exists(channel_parsed):
+	query = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = '%s'" % channel_parsed
+	engine = create_engine("mysql://root@localhost:3306/")
+	res = result_to_dict(engine.execute(query))[0]["COUNT(*)"]
+	if res > 0:
+		return True
+	else:
+		return False
+	
+def create_database(channel_parsed):
+	query = '''
+CREATE DATABASE IF NOT EXISTS `%s`;
+	USE `%s`;
+
+	CREATE TABLE IF NOT EXISTS `8ball_responses` (
+	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+	  `responses` varchar(500) DEFAULT NULL,
+	  PRIMARY KEY (`index`)
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+	CREATE TABLE IF NOT EXISTS `autoreplies` (
+	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+	  `phrase` varchar(500) DEFAULT NULL,
+	  `reply` varchar(500) DEFAULT NULL,
+	  PRIMARY KEY (`index`)
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+	CREATE TABLE IF NOT EXISTS `banphrases` (
+	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+	  `banphrase` varchar(500) DEFAULT NULL,
+	  PRIMARY KEY (`index`)
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+	CREATE TABLE IF NOT EXISTS `banphrase_warn` (
+	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+	  `set_time` double NOT NULL,
+	  `user` varchar(500) DEFAULT NULL,
+	  PRIMARY KEY (`index`)
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+	CREATE TABLE IF NOT EXISTS `caps_warn` (
+	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+	  `set_time` double NOT NULL,
+	  `user` varchar(500) DEFAULT NULL,
+	  PRIMARY KEY (`index`)
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+	CREATE TABLE IF NOT EXISTS `chatters` (
+	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+	  `command` varchar(500) DEFAULT NULL,
+	  `reply` varchar(500) DEFAULT NULL,
+	  `user` varchar(500) DEFAULT NULL,
+	  PRIMARY KEY (`index`)
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+	CREATE TABLE IF NOT EXISTS `commands` (
+	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+	  `command` varchar(500) DEFAULT NULL,
+	  `reply` varchar(500) DEFAULT NULL,
+	  PRIMARY KEY (`index`)
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+	CREATE TABLE IF NOT EXISTS `countdowns` (
+	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+	  `set_time` varchar(500) DEFAULT NULL,
+	  `command` varchar(500) DEFAULT NULL,
+	  `duration` varchar(500) DEFAULT NULL,
+	  PRIMARY KEY (`index`)
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+	CREATE TABLE IF NOT EXISTS `default_commands` (
+	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+	  `command` varchar(500) DEFAULT NULL,
+	  PRIMARY KEY (`index`)
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+	CREATE TABLE IF NOT EXISTS `emote_warn` (
+	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+	  `set_time` double NOT NULL,
+	  `user` varchar(500) DEFAULT NULL,
+	  PRIMARY KEY (`index`)
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+	CREATE TABLE IF NOT EXISTS `fake_purge_warn` (
+	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+	  `set_time` double NOT NULL,
+	  `user` varchar(500) DEFAULT NULL,
+	  PRIMARY KEY (`index`)
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+	CREATE TABLE IF NOT EXISTS `followers` (
+	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+	  `user` varchar(500) DEFAULT NULL,
+	  PRIMARY KEY (`index`)
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+	
+	CREATE TABLE IF NOT EXISTS `game` (
+	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+	  `game` varchar(50) DEFAULT NULL,
+	  PRIMARY KEY (`index`)
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+	
+	CREATE TABLE IF NOT EXISTS `ip_warn` (
+	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+	  `set_time` double NOT NULL,
+	  `user` varchar(500) DEFAULT NULL,
+	  PRIMARY KEY (`index`)
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+	CREATE TABLE IF NOT EXISTS `link_warn` (
+	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+	  `set_time` double NOT NULL,
+	  `user` varchar(500) DEFAULT NULL,
+	  PRIMARY KEY (`index`)
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+	CREATE TABLE IF NOT EXISTS `link_whitelists` (
+	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+	  `link` varchar(500) DEFAULT NULL,
+	  PRIMARY KEY (`index`)
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+	CREATE TABLE IF NOT EXISTS `link_whitelist_warn` (
+	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+	  `set_time` double NOT NULL,
+	  `user` varchar(500) DEFAULT NULL,
+	  PRIMARY KEY (`index`)
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+	CREATE TABLE IF NOT EXISTS `long_msg_warn` (
+	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+	  `set_time` double NOT NULL,
+	  `user` varchar(500) DEFAULT NULL,
+	  PRIMARY KEY (`index`)
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+	CREATE TABLE IF NOT EXISTS `long_word_warn` (
+	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+	  `set_time` double NOT NULL,
+	  `user` varchar(500) DEFAULT NULL,
+	  PRIMARY KEY (`index`)
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+	CREATE TABLE IF NOT EXISTS `lottery` (
+	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+	  `user` varchar(500) DEFAULT NULL,
+	  PRIMARY KEY (`index`)
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+	CREATE TABLE IF NOT EXISTS `main` (
+	  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+	  `display_id` varchar(500) DEFAULT NULL,
+	  `feature_status` tinyint(4) DEFAULT NULL,
+	  PRIMARY KEY (`id`)
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+	
+	INSERT INTO `main` (`id`, `display_id`, `feature_status`) VALUES
+		(1, 'antispam', 1),
+		(2, 'caps_warn', 1),
+		(3, 'emote_warn', 1),
+		(4, 'fake_purge_warn', 1),
+		(5, 'skincode_warn', 1),
+		(6, 'long_message_warn', 1),
+		(7, 'symbol_warn', 1),
+		(8, 'link_warn', 1),
+		(9, 'spam_warn', 1),
+		(10, 'long_word_warn', 1),
+		(11, 'me_warn', 1),
+		(12, 'ip_warn', 1),
+		(13, 'ban_emote_warn', 1),
+		(14, 'banphrase_warn', 1),
+		(15, 'link_whitelist_warn', 1),
+		(16, 'link_whitelists', 1),
+		(17, 'spam_permits', 1),
+		(18, 'banphrases', 1),
+		(19, 'autoreplies', 1),
+		(20, 'ban_emotes', 1),
+		(21, 'command_dict', 1),
+		(22, 'commands', 1),
+		(23, 'repeats', 1),
+		(24, 'countdowns', 1),
+		(25, 'raffle', 0),
+		(26, 'lottery', 0),
+		(27, 'vote_options', 1),
+		(28, 'votes', 0),
+		(29, 'chatters', 1),
+		(30, 'permanent_chatters', 1),
+		(31, 'lurkers', 1),
+		(32, 'followers', 1),
+		(33, 'new_followers', 1),
+		(34, 'viewers', 1),
+		(35, 'new_viewers', 1),
+		(36, '8ball_responses', 1),
+		(37, 'time_units', 1),
+		(38, 'reply_args', 1),
+		(39, 'default_commands', 1),
+		(40, 'point_users', 1),
+		(41, 'roulette', 1),
+		(42, 'roll', 1),
+		(43, 'math', 1),
+		(44, 'coin', 1),
+		(45, 'topic', 1),
+		(46, 'repeat_antispam', 1),
+		(47, 'emote_antispam', 1),
+		(48, 'caps_antispam', 1),
+		(49, 'long_message_antispam', 1),
+		(50, 'long_word_antispam', 1),
+		(51, 'fake_purge_antispam', 1),
+		(52, 'skincode_antispam', 1),
+		(53, 'stats', 1),
+		(54, 'symbol_antispam', 1),
+		(55, 'link_whitelist_antispam', 1),
+		(56, 'me_antispam', 1),
+		(57, 'ip_antispam', 1),
+		(58, 'purges', 1),
+		(59, 'points', 1),
+		(60, 'slots', 1),
+		(61, 'give', 1);
+	
+	CREATE TABLE IF NOT EXISTS `me_warn` (
+	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+	  `set_time` double NOT NULL,
+	  `user` varchar(500) DEFAULT NULL,
+	  PRIMARY KEY (`index`)
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+	CREATE TABLE IF NOT EXISTS `new_followers` (
+	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+	  `user` varchar(500) DEFAULT NULL,
+	  PRIMARY KEY (`index`)
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+	CREATE TABLE IF NOT EXISTS `new_viewers` (
+	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+	  `user` varchar(500) DEFAULT NULL,
+	  PRIMARY KEY (`index`)
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+	CREATE TABLE IF NOT EXISTS `permanent_chatters` (
+	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+	  `user` varchar(500) DEFAULT NULL,
+	  PRIMARY KEY (`index`)
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+	CREATE TABLE IF NOT EXISTS `point_users` (
+	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+	  `user` varchar(500) DEFAULT NULL,
+	  `points` varchar(500) DEFAULT NULL,
+	  PRIMARY KEY (`index`)
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+	CREATE TABLE IF NOT EXISTS `raffle` (
+	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+	  `user` varchar(500) DEFAULT NULL,
+	  PRIMARY KEY (`index`)
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+	CREATE TABLE IF NOT EXISTS `repeats` (
+	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+	  `set_time` double DEFAULT NULL,
+	  `phrase` varchar(500) DEFAULT NULL,
+	  `interval` double DEFAULT NULL,
+	  PRIMARY KEY (`index`)
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+	CREATE TABLE IF NOT EXISTS `reply_args` (
+	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+	  `arg` varchar(500) DEFAULT NULL,
+	  PRIMARY KEY (`index`)
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+	CREATE TABLE IF NOT EXISTS `skincode_warn` (
+	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+	  `set_time` double NOT NULL,
+	  `user` varchar(500) DEFAULT NULL,
+	  PRIMARY KEY (`index`)
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+	CREATE TABLE IF NOT EXISTS `spam_permits` (
+	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+	  `set_time` varchar(500) DEFAULT NULL,
+	  `user` varchar(500) DEFAULT NULL,
+	  `duration` varchar(500) DEFAULT NULL,
+	  `type` varchar(500) DEFAULT NULL,
+	  PRIMARY KEY (`index`)
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+	CREATE TABLE IF NOT EXISTS `spam_warn` (
+	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+	  `set_time` double NOT NULL,
+	  `user` varchar(500) DEFAULT NULL,
+	  PRIMARY KEY (`index`)
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+	CREATE TABLE IF NOT EXISTS `symbol_warn` (
+	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+	  `set_time` double NOT NULL,
+	  `user` varchar(500) DEFAULT NULL,
+	  PRIMARY KEY (`index`)
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+	CREATE TABLE IF NOT EXISTS `time_units` (
+	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+	  `unit` varchar(500) DEFAULT NULL,
+	  PRIMARY KEY (`index`)
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+	
+	CREATE TABLE IF NOT EXISTS `title` (
+	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+	  `title` varchar(50) DEFAULT NULL,
+	  PRIMARY KEY (`index`)
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+	CREATE TABLE IF NOT EXISTS `topic` (
+	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+	  `topic` varchar(50) DEFAULT NULL,
+	  PRIMARY KEY (`index`)
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+	
+	CREATE TABLE IF NOT EXISTS `viewers` (
+	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+	  `user` varchar(500) DEFAULT NULL,
+	  PRIMARY KEY (`index`)
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+	CREATE TABLE IF NOT EXISTS `votes` (
+	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+	  `option` varchar(500) DEFAULT NULL,
+	  `votes` varchar(500) DEFAULT NULL,
+	  `users` varchar(500) DEFAULT NULL,
+	  PRIMARY KEY (`index`)
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+	CREATE TABLE IF NOT EXISTS `vote_options` (
+	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+	  `option` varchar(500) DEFAULT NULL,
+	  PRIMARY KEY (`index`)
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;''' % (channel_parsed, channel_parsed)
+	#print "Making new db if doesn't already exist for channel %s" % channel_parsed
+	engine = create_engine("mysql://root@localhost:3306/")
+	conn = engine.connect()
+	conn.execute(query)
+	
+def update_chat_log(channel, time, message):
+	message = message.decode("utf-8").encode("utf-8")
+	#query = text("INSERT INTO main (channel, time, message) VALUES ('%s', %s, \"%s\")" % (channel, time, message))
+	query = text("INSERT INTO main (channel, time, message) VALUES (:channel, :time, :message)")
+	chat_log_conn.execute(query, channel=channel, time=time, message=message)
+
+def clear_chat_log(channel):
+	#remove all of a channel's chat messages, done when channel goes offline
+	query = "DELETE FROM main WHERE `channel` = '%s'" % channel
+	chat_log_conn.execute(query)
+def get_word_count_global(word):
+	query = text("SELECT COUNT(*) FROM main WHERE message LIKE '%%%s%%'" % word)
+	res = result_to_dict(chat_log_conn.execute(query))
+	return res[0]["COUNT(*)"]
+	
+def get_word_count(word, channel):
+	query = text("SELECT COUNT(*) FROM main WHERE message LIKE '%%%s%%' and channel = '%s'" % (word, channel))
+	res = result_to_dict(chat_log_conn.execute(query))
+	return res[0]["COUNT(*)"]
 	
 class TwitchBot(irc.IRCClient, object):
 
@@ -1065,12 +1432,13 @@ class TwitchBot(irc.IRCClient, object):
 		server = 'irc.twitch.tv'
 		
 		#Database
-		#create database here with the .sql file
+		#create database if it doesn't already exist
+		if not database_exists(self.channel_parsed):
+			create_database(self.channel_parsed)
 		engine = create_engine("mysql://root@localhost:3306/%s" % self.channel_parsed)
 		self.conn = engine.connect()
-		
 		#self.ban_emote_on = True
-		#self.emote_stats_on = True
+		#self.stats_on = True
 		
 		self.repeat_on = True
 		self.countdown_on = True
@@ -1094,13 +1462,13 @@ class TwitchBot(irc.IRCClient, object):
 		if stream_data:
 			game = stream_data[0]["game"]
 			if is_empty(self, "game"):
-				insert_data(self, "game", ["game"], game)
+				insert_data(self, "game", ["game"], game.encode("utf-8"))
 			title = stream_data[0]["channel"]["status"]
 			if is_empty(self, "title"):
-				insert_data(self, "title", ["title"], title)
-			topic = ""
-			if is_empty(self, "topic"):
-				insert_data(self, "topic", ["topic"], topic)
+				insert_data(self, "title", ["title"], title.encode("utf-8"))
+		topic = ""
+		if is_empty(self, "topic"):
+			insert_data(self, "topic", ["topic"], topic)
 			
 		#we should put settings like this in an admin menu, along with the timeout durations and such
 		self.rol_chance = .5
@@ -1118,7 +1486,7 @@ class TwitchBot(irc.IRCClient, object):
 		
 		self.default_permit_time = 30#seconds
 		self.default_permit_msg_count = 10#msgs
-		#######NOTE: ONLY USE THIS FOR DEBUGGING! AFTER THIS IT SHOULD ALWAYS BE EMPTY AND THIS WILL ONLY BE RUN ONCE!
+		#######NOTE: ONLY USE THIS FOR DEBUGGING / DEV! AFTER THIS IT SHOULD ALWAYS BE EMPTY AND THIS WILL ONLY BE RUN ONCE!
 		##########
 		if is_empty(self, "8ball_responses"):
 			insert_row_data(self, "8ball_responses", ["responses"], ["It is certain", "It is decidedly so", "Without a doubt", "Yes, definitely", "You may rely on it", "As I see it, yes", "Most likely", "Outlook good", "Yes", "Signs point to yes", "Reply hazy try again", "Ask again later", "Better not tell you now", "Cannot predict now", "Concentrate and ask again", "Don't count on it", "My reply is no", "My sources say no", "Outlook not so good", "Very doubtful"])
@@ -2171,6 +2539,7 @@ class TwitchBot(irc.IRCClient, object):
 		set_coin_str = "!set coin"
 		set_countdown_str = "!set countdown"
 		set_topic_str = "!set topic"
+		set_stats_str = "!set stats"
 		
 		set_antispam_str = "!set antispam"
 		set_repeat_antispam_str = "!set repeat antispam"
@@ -2185,7 +2554,6 @@ class TwitchBot(irc.IRCClient, object):
 		set_me_antispam_str = "!set me antispam"
 		
 		set_ban_emotes_str = "!set ban emotes"
-		set_emote_stats_str = "!set emote stats"
 		set_spam_permits_str = "!set spam permits"
 		
 		set_rol_cmd_str = "!roulette"
@@ -2240,6 +2608,10 @@ class TwitchBot(irc.IRCClient, object):
 					elif in_front(set_topic_str, msg):
 						set_value(self, "topic", "topic", msg_arr)
 						
+					#stats
+					elif in_front(set_stats_str, msg):
+						self.stats_on = set_value(self, self.stats_on, "stats", msg_arr)
+						
 					else:
 						send_str = "Usage: \"!set <feature> on/off \"." 
 						whisper(user, send_str)
@@ -2285,9 +2657,6 @@ class TwitchBot(irc.IRCClient, object):
 					'''elif in_front(set_ban_emotes_str, msg):
 						self.ban_emotes_on = set_value(self, self.ban_emotes_on, "ban emotes", msg_arr)
 					
-					#emote stats
-					elif in_front(set_emote_stats_str, msg):
-						self.emote_stats_on = set_value(self, self.emote_stats_on, "emote stats", msg_arr)
 					'''	
 					
 				elif len(msg_arr) == 5:
@@ -2926,8 +3295,8 @@ class TwitchBot(irc.IRCClient, object):
 					if is_mod(user, self.channel_parsed, user_type):
 						if len(msg_arr) > 2:#need to have this if statement more often
 							ball_response = msg_arr[2]
-							if ball_response not in self.ball_arr:
-								self.ball_arr.append(ball_response)
+							if not has_count(self, "8ball_responses", ["responses"], [ball_response]):
+								insert_data(self, "8ball_responses", ["responses"], [ball_response])
 								send_str = "\"%s\" added to list of 8ball responses." % (ball_response)
 							else:
 								send_str = "%s is already an 8ball response." % (ball_response)
@@ -2945,15 +3314,15 @@ class TwitchBot(irc.IRCClient, object):
 							if is_num(ball_response):
 								#we add on one to the actual index because users prefer to start with 1, rather than 0.
 								ball_response = int(ball_response)
-								if ball_response > 0 and ball_response <= len(self.ball_arr):
-									send_str = "8Ball response \"%s\" removed at index %s." % (self.ball_arr[ball_response-1], ball_response)
-									del self.ball_arr[ball_response-1]
+								delete_status = delete_index_handler(self, "8ball_responses", ball_response)
+								if delete_status:
+									send_str = "8Ball response \"%s\" removed at index %s." % (delete_status["responses"], ball_response)
 								else:
 									send_str = "Invalid index for 8ball response removal." 
 							else:
-								if ball_response in self.ball_arr:
-									self.ball_arr.remove(ball_response)
-									send_str = "8Ball response \"%s\" removed." % (ball_response)									
+								delete_status = delete_value_handler(self, "8ball_responses", "responses", ball_response)
+								if delete_status:
+									send_str = "8Ball response \"%s\" removed." % (delete_status["responses"])									
 								else:
 									send_str = "Specified 8ball response does not exist." 
 						else:
@@ -2965,14 +3334,15 @@ class TwitchBot(irc.IRCClient, object):
 					return
 				elif in_front(ball_list_str, msg):
 					if is_mod(user, channel_parsed, user_type):
-						if len(self.ball_arr) > 0:
+						ball_table = get_table(self, "8ball_responses")
+						if len(ball_table) > 0:
 							send_str = "Current 8ball responses: " 
-							for ball_response in range(len(self.ball_arr)):
-								if (ball_response != len(self.ball_arr) -1):
+							for row_index, row in enumerate(ball_table):
+								if (row_index != len(ball_table) -1):
 									#if not last response in arr
-									send_str += "(%s.) %s, " % (ball_response+1, self.ball_arr[ball_response])
+									send_str += "(%s.) %s, " % (row_index+1, row["responses"])
 								else:
-									send_str += "(%s.) %s." % (ball_response+1, self.ball_arr[ball_response])
+									send_str += "(%s.) %s." % (row_index+1, row["responses"])
 								#this accounts for any messages longer than the character cap
 								
 							self.write(send_str)
@@ -2985,11 +3355,8 @@ class TwitchBot(irc.IRCClient, object):
 					return
 				elif ball_clr_str == msg:
 					if is_mod(user, self.channel_parsed, user_type): 
-						if len(self.ball_arr) > 0:
-							clear_table(self, "8ball_responses")
-							send_str = "All 8ball responses removed." 
-						else:	
-							send_str = "There are currently no 8ball responses." 
+						clear_table(self, "8ball_responses")
+						send_str = "All 8ball responses removed." 
 						self.write(send_str)
 					else:
 						send_str = "You have to be a mod to use \"!8ball clear\"."
@@ -3009,10 +3376,11 @@ class TwitchBot(irc.IRCClient, object):
 					if "?" in msg: #and msg.rstrip().endswith("?") <-- is this better?
 						msg_arr = msg.split(" ", 1)
 						if len(msg_arr) == 2:
-							if len(self.ball_arr) > 0:
-								ball_response_index = random.randint(0, len(self.ball_arr)-1)
-								ball_response = self.ball_arr[ball_response_index]
-								send_str = "Magic 8 ball says... %s" % (ball_response)
+							ball_table = get_table(self, "8ball_responses")
+							if len(ball_table) > 0:
+								response_index = random.randint(0, len(ball_table)-1)
+								response = ball_table[response_index]["responses"]
+								send_str = "Magic 8 ball says... %s" % (response)
 							else:
 								send_str = "There are currently no 8ball responses." 
 								whisper(user, send_str)
@@ -3514,7 +3882,7 @@ class TwitchBot(irc.IRCClient, object):
 										send_str = "%s is already a default command." % (cmd_phrase)
 									else:
 										cmd_pair = [cmd_phrase, cmd_reply]
-										if has_count(self, table, ["command", "reply"], cmd_pair):
+										if has_count(self, "commands", ["command", "reply"], cmd_pair):
 											send_str = "%s is already a custom command." % (cmd_phrase)
 										else:
 											if not disconnect_cmd(cmd_reply):
@@ -3614,18 +3982,19 @@ class TwitchBot(irc.IRCClient, object):
 				####THIS NEEDS TO NOT BE IS MOD BUT DEPEND ON THE LEVEL PARAMETER OF THE COMMAND
 				################################################################################
 				if cmd_on:
-					for cmd_pair in self.cmd_arr:
+					cmd_table = get_table(self, "commands")
+					for row in cmd_table:
 						try:
-							cmd_index = msg.index(cmd_pair[0])
+							cmd_index = msg.index(row["command"])
 							#if msg did contain the custom command
 							if is_mod(user, channel_parsed, user_type):
-								reply = cmd_pair[1]
+								reply = row["reply"]
 								for word in reply.split():
 									if word in self.reply_args_arr:
 										if word == "{*USER*}":
 											reply = reply.replace("{*USER*}", user)
 										elif word == "{*TO_USER*}":
-											to_user_part = msg[cmd_index+len(cmd_pair[0]):len(msg)]#all the elements after the autoreply
+											to_user_part = msg[cmd_index+len(row["command"]):len(msg)]#all the elements after the autoreply
 											reply_to_user = to_user_part.split()[0]#the first word after the autoreply, should be the to user
 											reply = reply.replace("{*TO_USER*}", str(reply_to_user))
 										elif word == "{*GAME*}":
@@ -3662,34 +4031,42 @@ class TwitchBot(irc.IRCClient, object):
 		else:
 			return False
 	
-	def emote_stats_parse(self, user, msg, channel_parsed, user_type):
-		#going to be deprecated RIP
-		emote_stats_str = "!stats"
-		if self.emote_stats_on:
-			if in_front(emote_stats_str, msg):
-				#if is_mod(user, self.channel_parsed, self.user_type): <-- one of those gui make it require mod status things
-				msg_arr = msg.split(" ", 1)
-				if len(msg_arr) == 2:
-					emote = msg_arr[1]
-					if is_emote(emote, self.emote_arr):
-						#don't count when getting stats
-						#emote_count = word_count(msg, emote)
-						#self.count_dict[emote][0] += emote_count
-						emote_per_min = round(find_per_min(emote, self.count_dict, self.channel_parsed), 2)
-						send_str = "Total times %s has been sent: %s. %s per minute: %s." % (emote, prettify_num(self.count_dict[emote][0]), emote, prettify_num(simplify_num(emote_per_min)))
+	def stats_parse(self, user, msg, channel_parsed, user_type):
+		stats_str = "!stats"
+		
+		if in_front(stats_str, msg):
+			msg_arr = msg.split()
+			if len(msg_arr) == 2:
+				#!stats <word>
+				word = msg_arr[1]
+				word_count_global = get_word_count_global(word)
+				send_str = "Total times %s has been sent: %s." % (word, prettify_num(word_count_global))
+			elif len(msg_arr) == 3:
+				#!stats <channel> <word>
+				channel_parsed = msg_arr[1]
+				word = msg_arr[2]
+				word_count = get_word_count(word, channel_parsed)
+				channel_data = get_json_stream(channel_parsed)["streams"]
+				if channel_data:
+					minute = get_uptime_min(channel_parsed)
+					word_per_min = round((word_count / minute), 2)
+					if channel_parsed.endswith("s"):
+						channel_parsed+="'"
 					else:
-						send_str = "Invalid emote for emote stats." 
+						channel_parsed+="'s"
+					send_str = "Total times %s has been sent in %s channel: %s. Per minute: %s." % (word, channel_parsed, prettify_num(word_count), simplify_num(word_per_min))
 				else:
-					send_str = "Usage: !stats <emote>" 
-				self.write(send_str)
-				return
-			#dont count emotes sent by us, or when getting stats
+					send_str = "That channel is currently offline."
 			else:
-				if user != self.nickname:
-					for emote in self.emote_arr:
-						if word_count(msg, emote) != 0:
-							emote_count = word_count(msg, emote)
-							self.count_dict[emote][0] += emote_count
+				send_str = "Usage: !stats <channel> <word>" 
+				whisper(user, send_str)
+				return
+			if get_status(self, "stats") and is_mod(user, channel_parsed, user_type):
+				self.write(send_str)
+			else:
+				whisper(user, send_str)
+			return
+		else:
 			return False
 	
 	def mods_parse(self, user, msg, channel_parsed, user_type):
@@ -3704,33 +4081,35 @@ class TwitchBot(irc.IRCClient, object):
 	def repeat_check(self):
 		#perhaps this would be better: https://twistedmatrix.com/documents/10.1.0/core/howto/time.html, for now using LoopingCalls
 		
-		if self.repeat_on:
+		if get_status(self, "repeats"):
 			current_time = time.time()
 			query = "SELECT * FROM repeats WHERE (%d - set_time > `interval` )" % current_time
 			result = self.conn.execute(query)
-			for repeat_set in result:
-				query = "UPDATE repeats SET set_time=%d WHERE `index`=%s" % (current_time, repeat_set[0])
+			for repeat_row in result:
+				query = "UPDATE repeats SET set_time=%d WHERE `index`=%s" % (current_time, repeat_row[0])
 				self.conn.execute(query)
 				#have to ahve this for some reason idk whhy it breaks without it
 				try:
-					self.write(repeat_set[2])
+					self.write(repeat_row[2])
 				except:
 					pass
-				self.main_parse(self.nickname, repeat_set[2], 'mod')
+				self.main_parse(self.nickname, repeat_row[2], 'mod')
 	
 	def countdown_check(self):
-		if self.countdown_on:
+		if get_status(self, "countdowns"):
 			current_time = time.time()
-			for countdown_set in self.countdown_arr:
-				countdown_set_time = countdown_set[0]
-				countdown_cmd = countdown_set[1] 
-				countdown_time = simplify_num(countdown_set[2])
-				if (current_time - countdown_set_time >= countdown_time):
-					self.write(countdown_cmd)
-					self.main_parse(self.nickname, countdown_cmd, 'mod')
-					#write and parse the command, then remove it
-					self.countdown_arr.remove(countdown_set)
-					
+			query = "SELECT * FROM countdowns WHERE (%d - set_time > `duration` )" % current_time
+			result = self.conn.execute(query)
+			for countdown_row in result:
+				#have to ahve this for some reason idk whhy it breaks without it
+				query = "DELETE FROM countdowns WHERE `index` = %d" % countdown_row["index"]
+				self.conn.execute(query)
+				try:
+					self.write(countdown_row["command"])
+				except:
+					pass
+				self.main_parse(self.nickname, countdown_row["command"], 'mod')
+									
 	def follower_check(self):
 		self.follower_arr, new_follower_arr = get_new_followers(self.follower_arr, self.channel_parsed, self)
 		if len(new_follower_arr) > 0:
@@ -3760,6 +4139,7 @@ class TwitchBot(irc.IRCClient, object):
 					self.chatter_arr = []
 					self.lurker_arr = []
 					self.stream_status = False
+					clear_chat_log(self.channel_parsed)
 					return
 				else:
 					self.stream_status = True
@@ -3796,9 +4176,12 @@ class TwitchBot(irc.IRCClient, object):
 					else:
 						whisper(user, send_str)
 				else:	
-					channel_data = get_json_stream(channel_parsed)
-					title = channel_data["streams"][0]["channel"]["status"]
-					send_str = "The current title is: \"%s\"" % title.encode("utf-8")
+					channel_data = get_json_stream(channel_parsed)["streams"]
+					if channel_data:
+						title = channel_data[0]["channel"]["status"]
+						send_str = "The current title is: \"%s\"" % title.encode("utf-8")
+					else:
+						send_str = "%s, %s is currently offline." % (user, self.channel_parsed)
 					if is_mod(user, channel_parsed, user_type):
 						self.write(send_str)
 					else:
@@ -3825,9 +4208,9 @@ class TwitchBot(irc.IRCClient, object):
 					whisper(user, send_str)
 			else:
 				#gonna need to see what the output is from this and edit accordingly
-				game = get_data_simple(self, "game", ["game"])[0]["game"]
+				game = get_data_simple(self, "game", ["game"])
 				#if they want game and it's equal to "", then get the game and check accordingly
-				if game != "":
+				if game != []:
 					if game == False:
 						send_str = "%s is not playing a game." % channel_parsed.capitalize()
 					else:
@@ -3840,15 +4223,13 @@ class TwitchBot(irc.IRCClient, object):
 						return
 				else:	
 					#get the new game and then print accordingly
-					channel_data = get_json_stream(channel_parsed)
-					game = channel_data["streams"][0]["game"]
-					if not game:
-						game = False
-						
-					if game == False:
-						send_str = "%s is not playing a game." % channel_parsed.capitalize()
-					else:
+					channel_data = get_json_stream(channel_parsed)["streams"]
+					if channel_data:
+						game = channel_data[0]["game"]
 						send_str = "The current game is: \"%s\"" % game.encode("utf-8")
+					else:
+						send_str = "%s is not playing a game." % channel_parsed.capitalize()
+						
 					if is_mod(user, channel_parsed, user_type):
 						self.write(send_str)
 						return
@@ -4138,7 +4519,7 @@ class TwitchBot(irc.IRCClient, object):
 					else:
 						send_str = "You have to be a mod to get the points of other users"
 				elif len(msg_arr) == 1:
-					points_num = point_balance(self, point_user)
+					points_num = point_balance(self, user)
 					if points_num:
 						if points_num != 1:
 							send_str = "%s, you have %s points in this channel" % (user, points_num)
@@ -4295,11 +4676,11 @@ class TwitchBot(irc.IRCClient, object):
 							whisper(user, send_str)
 							return
 					else:
-						send_str = "Usage: !give <point amount> <user>"
+						send_str = "Usage: !give <user> <point amount> "
 						whisper(user, send_str)
 						return
 				else:
-					send_str = "Usage: !give <point amount> <user>"
+					send_str = "Usage: !give <user> <point amount>"
 					whisper(user, send_str)
 					return
 				self.write(send_str)
@@ -4320,7 +4701,8 @@ class TwitchBot(irc.IRCClient, object):
 		current_time = time.time()
 		#[current_msg_count, user, msg_count, type]
 		#[current_time, user, permit_time, type]
-		#Take the message and add each word to the word frequency database
+		#Take the message and add to chat log
+		update_chat_log(self.channel_parsed, current_time, msg)
 		
 		###new viewers/chatters
 		#needs to be reassigned every time so that we keep the topic up to date
@@ -4393,7 +4775,6 @@ class TwitchBot(irc.IRCClient, object):
 		if self.set_parse(user, msg, self.channel_parsed, user_type) != False:
 			return
 		
-		
 		if self.vote_parse(user, msg, self.channel_parsed, user_type) != False:
 			return
 		
@@ -4424,9 +4805,6 @@ class TwitchBot(irc.IRCClient, object):
 		if self.general_channel_stats_parse(user, msg, self.channel_parsed, user_type, "followers") != False:
 			return	
 			
-		if self.general_channel_stats_parse(user, msg, self.channel_parsed, user_type, "stats") != False:
-			return	
-			
 		if self.channel_stats_parse(user, msg, self.channel_parsed, user_type) != False:
 			return	
 			
@@ -4445,8 +4823,8 @@ class TwitchBot(irc.IRCClient, object):
 		if self.custom_command_parse(user, msg, self.channel_parsed, user_type) != False:
 			return
 		
-		#if self.emote_stats_parse(user, msg, self.channel_parsed, user_type) != False:
-			#return
+		if self.stats_parse(user, msg, self.channel_parsed, user_type) != False:
+			return
 		
 		if self.mods_parse(user, msg, self.channel_parsed, user_type) != False:
 			return
@@ -4594,8 +4972,8 @@ class TwitchBot(irc.IRCClient, object):
 
 	def write(self, msg):
 		'''Send message to channel and log it'''
-		self.msg(self.channel, msg.encode("utf-8"))
-		logging.info("{}: {}".format(self.nickname, msg))
+		#self.msg(self.channel, msg.encode("utf-8"))
+		#logging.info("{}: {}".format(self.nickname, msg))
 		
 class BotFactory(protocol.ClientFactory, object):
 	wait_time = 1
@@ -4628,8 +5006,14 @@ class TwitchWhisperBot(irc.IRCClient, object):
 		self.password = password
 		self.channel_parsed = self.channel.replace("#", "")
 		
-		self.ball_arr = ["It is certain", "It is decidedly so", "Without a doubt", "Yes, definitely", "You may rely on it", "As I see it, yes", "Most likely", "Outlook good", "Yes", "Signs point to yes", "Reply hazy try again", "Ask again later", "Better not tell you now", "Cannot predict now", "Concentrate and ask again", "Don't count on it", "My reply is no", "My sources say no", "Outlook not so good", "Very doubtful"]
-		
+		#Database
+		#create database here with the .sql file if it doesn't already exist
+		#if not database_exists(self.nickname):	
+			#create_database(self.nickname)
+		engine = create_engine("mysql://root@localhost:3306/%s" % self.nickname)
+		self.conn = engine.connect()
+		if is_empty(self, "8ball_responses"):
+			insert_row_data(self, "8ball_responses", ["responses"], ["It is certain", "It is decidedly so", "Without a doubt", "Yes, definitely", "You may rely on it", "As I see it, yes", "Most likely", "Outlook good", "Yes", "Signs point to yes", "Reply hazy try again", "Ask again later", "Better not tell you now", "Cannot predict now", "Concentrate and ask again", "Don't count on it", "My reply is no", "My sources say no", "Outlook not so good", "Very doubtful"])
 		
 		check_loop = LoopingCall(self.whisper_check)
 		check_loop.start(0.003)
@@ -4644,7 +5028,6 @@ class TwitchWhisperBot(irc.IRCClient, object):
 		else:
 			return False
 	
-	
 	def ball_parse(self, user, msg, channel_parsed):
 		#8ball
 		#adding in deleting/adding/clearing of values
@@ -4654,10 +5037,11 @@ class TwitchWhisperBot(irc.IRCClient, object):
 			if "?" in msg: #and msg.rstrip().endswith("?") <-- is this better?
 				msg_arr = msg.split(" ", 1)
 				if len(msg_arr) == 2:
-					if len(self.ball_arr) > 0:
-						ball_response_index = random.randint(0, len(self.ball_arr)-1)
-						ball_response = self.ball_arr[ball_response_index]
-						send_str = "Magic 8 ball says... %s" % (ball_response)
+					ball_table = get_table(self, "8ball_responses")
+					if len(ball_table) > 0:
+						response_index = random.randint(0, len(ball_table)-1)
+						response = ball_table[response_index]["responses"]
+						send_str = "Magic 8 ball says... %s" % (response)
 					else:
 						send_str = "There are currently no 8ball responses." 
 				elif ball_str == msg:
@@ -4782,35 +5166,41 @@ class TwitchWhisperBot(irc.IRCClient, object):
 				whisper(user, send_str)
 		else:
 			return False
-	'''def emote_stats_parse(self, user, msg, channel_parsed):
-		emote_stats_str = "!stats"
-		if self.emote_stats_on:
-			if in_front(emote_stats_str, msg):
-				#if is_mod(user, self.channel_parsed, self.user_type): <-- one of those gui make it require mod status things
-				msg_arr = msg.split(" ", 1)
-				if len(msg_arr) == 2:
-					emote = msg_arr[1]
-					if is_emote(emote, self.emote_arr):
-						#don't count when getting stats
-						#emote_count = word_count(msg, emote)
-						#self.count_dict[emote][0] += emote_count
-						emote_per_min = round(find_per_min(emote, self.count_dict, self.channel_parsed), 2)
-						send_str = "Total times %s has been sent: %s. %s per minute: %s." % (emote, self.count_dict[emote][0], emote, simplify_num(emote_per_min))
+	
+	def stats_parse(self, user, msg, channel_parsed, user_type):
+		stats_str = "!stats"
+		if in_front(stats_str, msg):
+			msg_arr = msg.split()
+			if len(msg_arr) == 2:
+				#!stats <word>
+				word = msg_arr[2]
+				word_count_global = get_word_count_global(word)
+				send_str = "Total times %s has been sent: %s." % (word, prettify_num(word_count_global))
+			elif len(msg_arr) > 2:
+				#!stats <channel> <word>
+				channel_parsed = msg_arr[1]
+				word = msg_arr[2]
+				word_count = get_word_count(word, channel_parsed)
+				channel_data = get_json_stream(channel_parsed)["streams"]
+				if channel_data:
+					minute = get_uptime_min(channel_parsed)
+					word_per_min = round((word_count / minute), 2)
+					if channel_parsed.endswith("s"):
+						channel_parsed+="'"
 					else:
-						send_str = "Invalid emote for emote stats." 
+						channel_parsed+="'s"
+					send_str = "Total times %s has been sent in %s channel: %s. Per minute: %s." % (word, channel_parsed, prettify_num(word_count), simplify_num(word_per_min))
 				else:
-					send_str = "Usage: !stats <emote>" 
-				self.write(send_str)
-				return
-			#dont count emotes sent by us, or when getting stats
+					send_str = "That channel is currently offline."
 			else:
-				if user != self.nickname:
-					for emote in self.emote_arr:
-						if word_count(msg, emote) != 0:
-							emote_count = word_count(msg, emote)
-							self.count_dict[emote][0] += emote_count
+				send_str = "Usage: !stats <channel> <word>" 
+				whisper(user, send_str)
+				return
+			whisper(user, send_str)
+			return
+		else:
 			return False
-	'''
+			
 	'''def mods_parse(self, user, msg, channel_parsed):
 		mods_str = "!mods" 
 		moderators_str = "!moderators"
@@ -4845,7 +5235,7 @@ class TwitchWhisperBot(irc.IRCClient, object):
 		
 		if self.channel_stats_parse(user, msg, self.channel_parsed) != False:
 			return	
-		'''if self.emote_stats_parse(user, msg, self.channel_parsed) != False:
+		'''if self.stats_parse(user, msg, self.channel_parsed) != False:
 			return'''
 		
 	def whisper_check(self):
@@ -4951,8 +5341,8 @@ class TwitchWhisperBot(irc.IRCClient, object):
 
 	def write(self, msg):
 		'''Send message to channel and log it'''
-		self.msg(self.channel, msg.encode("utf-8"))
-		logging.info("{}: {}".format(self.nickname, msg))
+		#self.msg(self.channel, msg.encode("utf-8"))
+		#logging.info("{}: {}".format(self.nickname, msg))
 		
 class WhisperBotFactory(protocol.ClientFactory, object):
 	wait_time = 1
@@ -5000,8 +5390,17 @@ logging.basicConfig(format="[%(asctime)s] %(message)s",
 reactor.connectTCP(server, port, WhisperBotFactory(whisper_channel))
 
 #Channel connections
-reactor.connectTCP('irc.twitch.tv', 6667, BotFactory("#darkelement75"))
-
+#reactor.connectTCP('irc.twitch.tv', 6667, BotFactory("#darkelement75"))
+#####hiya future self, it's me again.
+#we muted the bot and put it on these channels to test the new chat log system, however the stats still needs some testing, not sure if it works fully.
+#until next time, good luck, have fun.
+#-Past DE
+##########
+reactor.connectTCP('irc.twitch.tv', 6667, BotFactory("#sodapoppin"))
+reactor.connectTCP('irc.twitch.tv', 6667, BotFactory("#nl_kripp"))
+reactor.connectTCP('irc.twitch.tv', 6667, BotFactory("#c9sneaky"))
+reactor.connectTCP('irc.twitch.tv', 6667, BotFactory("#lirik"))
+reactor.connectTCP('irc.twitch.tv', 6667, BotFactory("#forsenlol"))
 reactor.run()
 	
 #except Exception as errtxt:
