@@ -1,36 +1,45 @@
 Tecsbot originally started out as a Twitch Emote Chat Statistics Bot, hence TECSBOT. It was just an idea I had for a bot to keep track of the number of emotes total in the given channel, however after I would have been finished with it, I decided to take it farther. It now has multiple features including autoreplies, antispam, votes, and much more. However, at the moment Tecsbot is very WIP, and it needs a lot more improvement before I will be putting it up on a server and letting other streamers use it. 
 
-At the time of this README, the bot is run in Python 2.7, using multiple libraries, with Twisted at it's core. Using the Twitch API as well as these libraries, I am working to make it the best general purpose chat and moderation bot I can make it. 
+At the time of this README, the bot is run in Python 2.7, using multiple libraries, with Twisted at it's core and a MySQL - SQLAlchemy database backend. Using the Twitch API as well as these libraries, I am working to make it the best general purpose chat and moderation bot I can make it. 
 
 I hope the code in this repository can help other bot developers get around problems they might face, as I did.
 
 Current features (In no special order)
 
-1. Link Whitelists - !link whitelist
-2. Spam permits - !permit
+1. Link Whitelists - !link whitelist add/delete/remove/list/clear
+2. Spam permits - !permit add/delete/remove/list/clear <user> <type> <duration> (Note: can be permanent)
 3. Antispam capabilities
-4. Ban Phrases - !banphrase
-5. Test if bot is in channel - !test
-6. Autoreplies - !autoreply
-7. Set features on or off - !set
-8. Polls - !poll 
-9. Raffles - !raffle
-10. Roulette (Russian) - !roulette
-11. Magic 8 ball - !8ball
-12. Channel statistics (Can optionally input a channel to get it's stats)
-  a. Uptime - !uptime
-  b. Chatters - !chatters
-  c. Viewers - !viewers
-  d. Views - !views
+4. Ban Phrases - !banphrase add/delete/remove/list/clear <banphrase>
+5. Autoreplies - !autoreply add/delete/remove/list/clear <phrase>:<reply>
+6. Set features on or off - !set <feature> <status>
+7. Polls - !poll start/reset/stats/end/close
+  a. Users can vote for the poll with: !vote <option/index>
+8. Raffles - !raffle start/end
+9. Roulette (Russian) - !roulette 
+10. Magic 8 ball - !8ball <question>
+11. Channel statistics:
+  a. Uptime - !uptime <channel>
+  b. Chatters - !chatters <channel>
+  c. Viewers - !viewers <channel>
+  d. Views - !views <channel>
   e. Followers - !followers
-13. Subscribers (Only for the current channel) - !subs / !subscribers
-14. Commercials  - !commercial
-15. Ban Emotes and Emote stats (Soon going to be deprecated in favor of better method):
-  a. Ban Emotes - !ban emote
-  b. Emote Stats - !stats
-16. Repeat commands / messages - !repeat
-17. Custom commands - !command
+12. Subscribers (Only for the current channel) - !subs / !subscribers
+13. Commercials  - !commercial <interval>
+14. Word Stats - !stats <channel> <word>
+15. Repeat commands / messages - !repeat add/delete/remove/list/clear <command> <interval>
+16. Countdown commands / messages - !countdown add/delete/remove/list/clear <command> <expiration time>
+17. Custom commands - !command add/delete/remove/list/clear <command>:<reply>(Several custom commands already exist by default):
+  a. Trout slap - !slap <user>
+  b. Shoutout - !shoutout <user>
+  c. Test - !test
 18. Moderators (Only for the current channel atm) - !mods / !moderators
-19. Title / Status (Only streamer can edit) - !title / !status
-20. Game (Only streamer can edit) - !game
-21. Channel Topic - !topic
+19. Title / Status (Only streamer can edit) - !title / !status <title/status>
+20. Game (Only streamer can edit) - !game <game>
+21. Channel Topic - !topic <topic>
+22. Purge - !purge <user>
+23. Math (Solve math problem) - !math <equation>(Currently WIP)
+24. Roll (Random number generator) - !roll <number range>
+25. Coin - !coin
+26. Points - !points <user>
+27. Give points - !give <user> <points>
+28. Emote slots - !slots
