@@ -120,9 +120,7 @@ current_time = time.time() will not get fractions of a second, it will only get 
 	maybe we will make it loop every second in the future instead of 0.003, i dont fucking know i just know i dont want to 
 	do it right now
 add a general spam prevention like r9k
-###########
-need to add the new uptime and views on stuff to the set parse, as well as fix the viewers problem and views and stuff like that, I think viewers just isnt checking correctly when no channel is specified
-##########3
+###########future self you can spend the entire weekend on dota and waste the three days but you will be happier if you actually fucking do something, also dont forget to do exam and look for job
 need to properly sanitize all database user inputs
 """
 '''misc
@@ -768,13 +766,13 @@ def insert_permit(self, permit_pair):
 	permit_high_duration = permit_pair[2]
 	
 	if permit_high_type == "permanent":
-		query = "DELETE FROM spam_permits WHERE user = '%s'" % permit_high_user
-		self.conn.execute(query)
+		query = text("DELETE FROM spam_permits WHERE user = :user")
+		self.conn.execute(query, user=permit_high_user)
 		insert_data(self, "spam_permits", ["set_time", "user", "duration", "type"], permit_pair)
 		return True
 	else:
-		query = "SELECT COUNT(*) FROM spam_permits WHERE user = '%s' and type = 'permanent'" % permit_high_user
-		res = result_to_dict(self.conn.execute(query))
+		query = text("SELECT COUNT(*) FROM spam_permits WHERE user = :user and type = :type")
+		res = result_to_dict(self.conn.execute(query, user=permit_high_user, type=type))
 		if res[0]["COUNT(*)"] <= 0:
 			#this user does not have a permanent permit, check with the others
 			query = "DELETE FROM spam_permits WHERE type = '%s' and duration < %d" % (permit_high_type, permit_high_duration)
@@ -816,16 +814,16 @@ def encode_list(list):
 def point_change(self, user, points):
 	#if points != 0:#don't waste our time if it's 0 points#we actually remove this so that we tell them their new total of points and this may interfere with a custom setting
 	if get_status(self, "points"):
-		query = "SELECT COUNT(*) FROM point_users WHERE user = '%s'" % user
-		res = result_to_dict(self.conn.execute(query))[0]["COUNT(*)"]
+		query = ("SELECT COUNT(*) FROM point_users WHERE user = :user")
+		res = result_to_dict(self.conn.execute(query, user=user))[0]["COUNT(*)"]
 		if res <= 0:
 			insert_data(self, "point_users", ["user", "points"], [user, 0])
-		query = "UPDATE point_users SET points = points+%d WHERE user = '%s'" % (points, user)
-		self.conn.execute(query)
+		query = "UPDATE point_users SET points = points+%d WHERE user = :user" % (points)
+		self.conn.execute(query, user=user)
 
 def point_balance(self, user):
-	query = "SELECT points FROM point_users WHERE user = '%s'" % user
-	res = result_to_dict(self.conn.execute(query))
+	query = "SELECT points FROM point_users WHERE user = :user" % user
+	res = result_to_dict(self.conn.execute(query, user=user))
 	if res != []:
 		return res[0]["points"]
 	else:
@@ -855,8 +853,8 @@ def get_sum(self, table, column):
 def get_count(self, table, columns, values):
 	columns = "(" + ','.join(x for x in columns) + ")"
 	values = '(' + repr(values)[1:-1] + ')'
-	query = text("SELECT COUNT(*) FROM %s WHERE %s = %s" % (table, columns, values))
-	return result_to_dict(self.conn.execute(query))[0]["COUNT(*)"]
+	query = text("SELECT COUNT(*) FROM %s WHERE %s = :values" % (table, columns))
+	return result_to_dict(self.conn.execute(query, values=values))[0]["COUNT(*)"]
 	
 def has_count(self, table, columns, values):
 	#same as get_count but returns a bool instead of an int
@@ -865,8 +863,8 @@ def has_count(self, table, columns, values):
 	values = '(' + repr(values)[1:-1] + ')'
 	#else:
 	#values = repr(values[0])
-	query = text("SELECT COUNT(*) FROM %s WHERE %s = %s" % (table, columns, values))
-	if result_to_dict(self.conn.execute(query))[0]["COUNT(*)"] > 0:
+	query = text("SELECT COUNT(*) FROM %s WHERE %s = :values" % (table, columns))
+	if result_to_dict(self.conn.execute(query, values=values))[0]["COUNT(*)"] > 0:
 		return True
 	else:
 		return False
@@ -891,8 +889,8 @@ def insert_data(self, table, columns, values):
 	if not isinstance(values, list):
 		values = [values]
 	values = '(' + repr(values)[1:-1] + ')'
-	query = text("INSERT INTO %s %s VALUES %s" % (table, columns, values)) 
-	self.conn.execute(query)
+	query = text("INSERT INTO %s %s VALUES :values" % (table, columns)) 
+	self.conn.execute(query, values=values)
 	
 def insert_row_data(self, table, columns, values):
 	columns = "(" + ','.join(x for x in columns) + ")"
@@ -900,8 +898,8 @@ def insert_row_data(self, table, columns, values):
 	for value in values:
 		row_values += "(\"" + repr(value)[1:-1] + "\"),"
 	row_values = row_values[:-1] + ";"
-	query = text("INSERT INTO %s %s VALUES %s" % (table, columns, row_values)) 
-	self.conn.execute(query)
+	query = text("INSERT INTO %s %s VALUES :values" % (table, columns)) 
+	self.conn.execute(query, values=row_values)
 	
 def update_data(self, table, columns, values):
 	if len(columns) > 1:
@@ -909,15 +907,15 @@ def update_data(self, table, columns, values):
 	else:
 		columns = columns[0]
 	values = '("' + repr(values)[1:-1] + '")'
-	query = text("UPDATE %s SET %s = %s" % (table, columns, values)) 
-	self.conn.execute(query)
+	query = text("UPDATE %s SET %s = :values" % (table, columns)) 
+	self.conn.execute(query, values)
 
 def get_data_where(self, table, column, value):
 	if isinstance(value, basestring):
-		query = text("SELECT * FROM %s WHERE `%s` = '%s'" % (table, column, value))
+		query = text("SELECT * FROM %s WHERE `%s` = :value" % (table, column))
 	else:
-		query = text("SELECT * FROM %s WHERE `%s` = %s" % (table, column, value))
-	return result_to_dict(self.conn.execute(query))
+		query = text("SELECT * FROM %s WHERE `%s` = :value" % (table, column))
+	return result_to_dict(self.conn.execute(query, vaue=value))
 	
 def get_data_simple(self, table, columns):
 	#Simple way to get data, will likely only be used for the game, title, and topic functions
@@ -952,16 +950,16 @@ def delete_index_handler(self, table, index):
 
 def delete_value_handler(self, table, column, value):
 	if isinstance(value, basestring):
-		query = text("SELECT * FROM %s WHERE `%s` = '%s' LIMIT 1" % (table, column, value))
+		query = text("SELECT * FROM %s WHERE `%s` = :value LIMIT 1" % (table, column, value))
 	else:
-		query = text("SELECT * FROM %s WHERE `%s` = %s LIMIT 1" % (table, column, value))
-	res = result_to_dict(self.conn.execute(query))
+		query = text("SELECT * FROM %s WHERE `%s` = :value LIMIT 1" % (table, column, value))
+	res = result_to_dict(self.conn.execute(query, value=value))
 	if res:
 		if isinstance(value, basestring):
-			query = text("DELETE FROM %s WHERE `%s` = '%s' LIMIT 1" % (table, column, value))
+			query = text("DELETE FROM %s WHERE `%s` = :value LIMIT 1" % (table, column, value))
 		else:
-			query = text("DELETE FROM %s WHERE `%s` = %s LIMIT 1" % (table, column, value))
-		self.conn.execute(query)
+			query = text("DELETE FROM %s WHERE `%s` = :value LIMIT 1" % (table, column, value))
+		self.conn.execute(query, value=value)
 		return res[0]
 	else:
 		return False
@@ -2418,6 +2416,10 @@ class TwitchBot(irc.IRCClient, object):
 		set_countdown_str = "!set countdown"
 		set_topic_str = "!set topic"
 		set_stats_str = "!set stats"
+		set_views_str = "!set views"
+		set_viewers_str = "!set viewers"
+		set_chatters_str = "!set chatters"
+		set_followers_str = "!set followers"
 		
 		set_antispam_str = "!set antispam"
 		set_repeat_antispam_str = "!set repeat antispam"
@@ -2485,7 +2487,23 @@ class TwitchBot(irc.IRCClient, object):
 					#topic
 					elif in_front(set_topic_str, msg):
 						set_value(self, "topic", "topic", msg_arr)
-						
+					
+					#views
+					elif in_front(set_views_str, msg):
+						set_value(self, "views", "views", msg_arr)	
+					
+					#viewers
+					elif in_front(set_viewers_str, msg):
+						set_value(self, "viewers", "viewers", msg_arr)
+					
+					#chatters
+					elif in_front(set_chatters_str, msg):
+						set_value(self, "chatters", "chatters", msg_arr)
+					
+					#followers
+					elif in_front(set_followers_str, msg):
+						set_value(self, "followers", "followers", msg_arr)
+					
 					#stats
 					elif in_front(set_stats_str, msg):
 						self.stats_on = set_value(self, self.stats_on, "stats", msg_arr)
@@ -3312,8 +3330,12 @@ class TwitchBot(irc.IRCClient, object):
 					send_str = "There are currently %s accounts in chat." % (stat_count)
 				elif stat_str == "viewers":
 					stat_data = get_json_stream(channel_parsed.lower().strip())
-					stat_count = stat_data["streams"][0]["viewers"]
-					send_str = "There are currently %s viewers in the channel." % (stat_count)
+					stat_count = stat_data["streams"]
+					if stat_count:
+						stat_count = stat_count[0]["viewers"]
+						send_str = "There are currently %s viewers in the channel." % (stat_count)
+					else:
+						send_str = "This channel is currently offline."
 				elif stat_str == "views":
 					stat_data = get_json_views_follows(channel_parsed.lower().strip())
 					stat_count = stat_data["views"]
