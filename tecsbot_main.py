@@ -32,7 +32,6 @@ expiration dates for repeat timers
 
 SERVER:
 how to keep permanently on, desktop is best current option, other than some form of cloud hosting/streamer hosting<-- see stackoverflow response
-still cant track emotes it's not seeing, can't see them if it's not online. Permanent online is necessary for accurate emote stats.<-- ^
 
 multi channel processing for comparison stats?
 famous person has joined chat
@@ -41,7 +40,7 @@ hours til next strim? <--countdown command
 score of current game/tourney/bo3/etc
 song functionality
 sub notifications
-raffle -  expiration timer? <-- we could let the countdowns do this
+raffle -  expiration timer? <-- we could let the countdowns do this or gui
 social media info
 allow users to program question responses like ALICE? <-- interesting idea for a solo channel
 overall and per day -time user has watched stream
@@ -52,7 +51,6 @@ log/dict/array of recent commands? <-doubt this would actually help with an undo
 	do similar thing to moobot, have a chatbox of the commands said and run, without other misc messages
 different levels of authority? 
 tecsbot moderator group?
-more advanced !test results?
 figure out what to do with the other spamerino things
 excludes for "regulars" and subs
 offtime - time stream has been offline
@@ -74,54 +72,55 @@ point system for watching stream/chatting/etc
 		add user to self.user_points_arr if not in it already
 	we should do this as a dictionary actually
 	
-!x delete 21, 1, 5 <--- multiple deleting possibility <--- can we make a function for deleting?
+!x delete 21, 1, 5 <--- multiple deleting possibility
 allow streamer to choose what to let mods do?<--- could work with level system
-analytic for messages and emotes and shiznizzle
-when adding/removing ban emotes for the special emotes(o_O, O_o, etc), it currently will bulk remove/add them. 
-	In the GUI, we want to have a checkbox for "remove all variants of <input emote text>(emote picture)?" that if checked will do as did normally, if unchecked then will do one at a time.
+analytics for messages and emotes and shiznizzle(think past me meant in the gui)
 1 second between requests is recommended
 replace as many api requests as possible
+#######################################
 time for level system:
 	streamer has all control, GUI settings as well as everything else
 	editor level = all settings other than gui
 	moderator = can they start things but not edit, or can they do neither?
-	
+!level command-
+	!level <feature> <level>
+		!level autoreply 1 - makes it so that only the streamer can edit autoreplies
+		!level !slap 4 - makes it so that everyone can use the slap command
+#######################################
 !clever <user> to troll user
-add !leave and !join commands (and !rejoin)
-make stats for all words instead of just emotes
+How to get bot in channel:
+	1. User goes to website and gives oauth, so that we know it's them
+	2. They type !join in their channel and then mod the bot
+	3. bot joins, and if modded is good and oauth is good, then all is well and it is added to list of connections
 https://apis.rtainc.co/twitchbot/status?user=Darkelement75 custom api link
 	http://deepbot.tv/wiki/Custom+Commands
-should we deprecate ban emotes if we won't be distincting between emotes and words in the stats future?
 argument for mod requirement custom commands autoreplies
-	allow it for already existing commands, maybe edit in GUI
+	perhaps we should only have this in gui, users can make the command they just made(which they could just make in the gui) be a mod or non mod command
 	allow it to be input for custom and autoreply commands
 execute commands with streamer capabilities
 http://deepbot.deep.sg/wiki/Bot+Commands
 @customapi@[api link] where customapi is a variable that represents the data on the api link, ie how nightbot has uptime api link
 	use more try except/catch 
-oauth_on variable
+oauth_on variable?
 !time to print current time
 need to either figure out a way to whisper the /mods response or implement this when there is a new way to get the mods of a room
-dont let it time out mods unless it can send messages on behalf of streamer
-make link whitelist also look for false positives? i.e. dot com
 remember to update the default command list, the README, and the sets
-should we allow setting on/off of stuff like uptime and topic?
 whisper mods list or whispers argument where mods can choose to have bot's responses whispered to them instead of printed
-default starting amount of points, make changeable just like all the others
+default starting amount of points, make changeable just like all the others?
 3 main things:
 	1. Song requests - website for streamer to use that bot is hooked up to, use the gui
 	2. Database setting storage
 	3. website and gui for the bot 
-		a. Allows settings input
-		b. Has connect with twitch button first
+dont let it time out mods unless it can send messages on behalf of streamer
+make link whitelist also look for false positives? i.e. dot com
+	a. Allows settings input
+	b. Has connect with twitch button first
 input time out duration for banphrases?
 current_time = time.time() will not get fractions of a second, it will only get whole seconds
 	for now I don't want to implement this because why would you care so much about those fractions of a second
 	maybe we will make it loop every second in the future instead of 0.003, i dont fucking know i just know i dont want to 
 	do it right now
 add a general spam prevention like r9k
-###########future self you can spend the entire weekend on dota and waste the three days but you will be happier if you actually fucking do something, also dont forget to do exam and look for job
-need to properly sanitize all database user inputs
 """
 '''misc
  function loadEmotes() { $.getJSON("https://api.betterttv.net/emotes").done(function(data) { $emotes.text(''); parseEmotes(data.emotes); }).fail(function() { $('#emote').text("Error loading emotes.."); }); }
@@ -147,7 +146,7 @@ Traceback (most recent call last):
   File "C:\Python27\lib\httplib.py", line 803, in _send_output
 	self.send(msg)
   File "C:\Python27\lib\httplib.py", line 755, in send
-	self.connect()
+	self.connect( a
   File "C:\Python27\lib\httplib.py", line 736, in connect
 	self.timeout, self.source_address)
   File "C:\Python27\lib\socket.py", line 551, in create_connection
@@ -551,8 +550,8 @@ def caps_perc(msg):
 
 def check_user_permit(self, user):
 	#return True if they have a permit and can go on, False if not
-	query = "SELECT COUNT(*) FROM spam_permits WHERE user = '%s'" % user
-	res = result_to_dict(self.conn.execute(query))
+	query = text("SELECT COUNT(*) FROM spam_permits WHERE user = :user" )
+	res = result_to_dict(self.conn.execute(query, user=user))
 	if res[0]["COUNT(*)"] <= 0:
 	#user has no permits
 		return False
@@ -575,8 +574,8 @@ def check_user_permit(self, user):
 				#message
 				if int(row["duration"]) > 0:
 					#they still have some left, update duration 
-					query = "UPDATE spam_permits SET duration = duration - 1 WHERE `index` = %s" % row["index"]
-					self.conn.execute(query)
+					query = "UPDATE spam_permits SET duration = duration - 1 WHERE `index` = :index" 
+					self.conn.execute(query, index=row["index"])
 					final_return_arr[row_index] = True
 				else:
 					#they do not have any left, and need to gtfo
@@ -601,8 +600,8 @@ def check_user_permit(self, user):
 			#message
 			if int(permit_row["duration"]) > 0:
 				#they still have some left, update duration 
-				query = "UPDATE spam_permits SET duration = duration - 1 WHERE `index` = %s" % permit_row["index"]
-				self.conn.execute(query)
+				query = text("UPDATE spam_permits SET duration = duration - 1 WHERE `index` = :index")
+				self.conn.execute(query, index=permit_row["index"])
 				return True
 			else:
 				#they do not have any left, and need to gtfo
@@ -612,13 +611,13 @@ def check_user_permit(self, user):
 def warn(user, msg, channel_parsed, self, warn_table, warn_duration, warn_cooldown, timeout_msg, timeout_duration):
 	#function to warn if they havent already been warned, and time them out if they have.
 	if not check_user_permit(self, user):
-		query = "SELECT COUNT(*) FROM %s WHERE user = '%s'" % (warn_table, user)
-		res = result_to_dict(self.conn.execute(query))
+		query = text("SELECT COUNT(*) FROM :table WHERE user = :user")
+		res = result_to_dict(self.conn.execute(query, table=warn_table, user=user))
 		if res[0]["COUNT(*)"] > 0:
 			current_time = time.time()
 			#check if current time is longer than the warning duration from the last time name was entered
-			query = "SELECT * FROM %s WHERE user = '%s' and (%s - set_time <= %s) LIMIT 1" % (warn_table, user, current_time, warn_cooldown)
-			row = result_to_dict(self.conn.execute(query))
+			query = text("SELECT * FROM :table WHERE user = :user and (:current_time - set_time <= :cooldown) LIMIT 1")
+			row = result_to_dict(self.conn.execute(query, table=warn_table, user=user, current_time=current_time, cooldown=warn_cooldown))
 			if row != []:
 				#they did a bad thing in a time less than the cooldown, time out for long duration
 				#timeout user for long duration and remove from array
@@ -633,8 +632,8 @@ def warn(user, msg, channel_parsed, self, warn_table, warn_duration, warn_cooldo
 				#they did a bad thing in a time more than the cooldown, time out for long duration
 				#replace old entry with new one and send warning as well as timeout for warn_duration
 				#short duration
-				query = "SELECT * FROM %s WHERE user = '%s' and (%s - set_time > %s) LIMIT 1" % (warn_table, user, current_time, warn_cooldown)
-				row = result_to_dict(self.conn.execute(query))
+				query = text("SELECT * FROM :table WHERE user = :user and (:current_time - set_time > :cooldown) LIMIT 1")
+				row = result_to_dict(self.conn.execute(query, table=warn_table, user=user, current_time=current_time, cooldown=warn_cooldown))
 				timeout(user, self, warn_duration)
 				delete_value_handler(self, warn_table, "index", row[0]["index"])
 				pair = [current_time, user]
@@ -775,10 +774,10 @@ def insert_permit(self, permit_pair):
 		res = result_to_dict(self.conn.execute(query, user=permit_high_user, type=type))
 		if res[0]["COUNT(*)"] <= 0:
 			#this user does not have a permanent permit, check with the others
-			query = "DELETE FROM spam_permits WHERE type = '%s' and duration < %d" % (permit_high_type, permit_high_duration)
-			self.conn.execute(query)
-			query = "SELECT COUNT(*) FROM spam_permits WHERE type = '%s' and duration > %d" % (permit_high_type, permit_high_duration)
-			res = result_to_dict(self.conn.execute(query))
+			query = "DELETE FROM spam_permits WHERE type = :type and duration < :duration"
+			self.conn.execute(query, type=permit_high_type, duration=permit_high_duration)
+			query = "SELECT COUNT(*) FROM spam_permits WHERE type = :type and duration > :duration"
+			res = result_to_dict(self.conn.execute(query, type=permit_high_type, duration=permit_high_duration))
 			if res[0]["COUNT(*)"] <= 0:
 				#as long as there are none that are greater than ours(which means there are now no others of this type in the db), add it
 				insert_data(self, "spam_permits", ["set_time", "user", "duration", "type"], permit_pair)
@@ -841,20 +840,20 @@ def is_empty(self, table):
 		
 def get_len_table(self, table):
 	query = "SELECT COUNT(*) FROM %s" % table
-	res = result_to_dict(self.conn.execute(query))
+	res = result_to_dict(self.conn.execute(query, table=table))
 	len_table = res[0]["COUNT(*)"]
 	return len_table
 
 def get_sum(self, table, column):
-	query = "SELECT SUM(`%s`) FROM %s" % (column, table)
-	res = int(result_to_dict(self.conn.execute(query))[0]["SUM(`%s`)"%column])
+	query = text("SELECT SUM(:column) FROM :table")
+	res = int(result_to_dict(self.conn.execute(query, column, table))[0]["SUM(`%s`)"%column])
 	return res
 	
 def get_count(self, table, columns, values):
 	columns = "(" + ','.join(x for x in columns) + ")"
 	values = '(' + repr(values)[1:-1] + ')'
-	query = text("SELECT COUNT(*) FROM %s WHERE %s = :values" % (table, columns))
-	return result_to_dict(self.conn.execute(query, values=values))[0]["COUNT(*)"]
+	query = text("SELECT COUNT(*) FROM :table WHERE :columns = :values")
+	return result_to_dict(self.conn.execute(query, table=table, columns=columns, values=values))[0]["COUNT(*)"]
 	
 def has_count(self, table, columns, values):
 	#same as get_count but returns a bool instead of an int
@@ -863,15 +862,15 @@ def has_count(self, table, columns, values):
 	values = '(' + repr(values)[1:-1] + ')'
 	#else:
 	#values = repr(values[0])
-	query = text("SELECT COUNT(*) FROM %s WHERE %s = :values" % (table, columns))
-	if result_to_dict(self.conn.execute(query, values=values))[0]["COUNT(*)"] > 0:
+	query = text("SELECT COUNT(*) FROM :table WHERE :columns = :values")
+	if result_to_dict(self.conn.execute(query, table=table, columns=columns, values=values))[0]["COUNT(*)"] > 0:
 		return True
 	else:
 		return False
 		
 def get_status(self, display_id):
-	query = "SELECT feature_status FROM main WHERE display_id = '%s'" % display_id
-	status = result_to_dict(self.conn.execute(query))
+	query = "SELECT feature_status FROM main WHERE display_id = :display_id"
+	status = result_to_dict(self.conn.execute(query, display_id=display_id))
 	if status[0]["feature_status"] == 1:
 		return True
 	else:
@@ -879,17 +878,18 @@ def get_status(self, display_id):
 		
 def set_status(self, feature, status):
 	if status:
-		query = "UPDATE main SET feature_status = 1 where display_id = '%s'" % feature
+		query = "UPDATE main SET feature_status = 1 where display_id = :feature"
 	else:
-		query = "UPDATE main SET feature_status = 0 where display_id = '%s'" % feature
+		query = "UPDATE main SET feature_status = 0 where display_id = :feature"
 	self.conn.execute(query)
 		
 def insert_data(self, table, columns, values):
 	columns = "(" + ','.join(x for x in columns) + ")"
-	if not isinstance(values, list):
-		values = [values]
-	values = '(' + repr(values)[1:-1] + ')'
-	query = text("INSERT INTO %s %s VALUES :values" % (table, columns)) 
+	if isinstance(values, list):
+		values = '(' + repr(values)[1:-1] + ')'
+	else:
+		values = "(%s)" % values
+	query = text("INSERT INTO %s %s VALUES :values" % (table, columns))
 	self.conn.execute(query, values=values)
 	
 def insert_row_data(self, table, columns, values):
@@ -898,6 +898,7 @@ def insert_row_data(self, table, columns, values):
 	for value in values:
 		row_values += "(\"" + repr(value)[1:-1] + "\"),"
 	row_values = row_values[:-1] + ";"
+	print row_values
 	query = text("INSERT INTO %s %s VALUES :values" % (table, columns)) 
 	self.conn.execute(query, values=row_values)
 	
@@ -907,21 +908,21 @@ def update_data(self, table, columns, values):
 	else:
 		columns = columns[0]
 	values = '("' + repr(values)[1:-1] + '")'
-	query = text("UPDATE %s SET %s = :values" % (table, columns)) 
-	self.conn.execute(query, values)
+	query = text("UPDATE :table SET :columns = :values")
+	self.conn.execute(query, table=table, columns=columns, values=values)
 
 def get_data_where(self, table, column, value):
 	if isinstance(value, basestring):
-		query = text("SELECT * FROM %s WHERE `%s` = :value" % (table, column))
+		query = text("SELECT * FROM :table WHERE :column = :value")
 	else:
-		query = text("SELECT * FROM %s WHERE `%s` = :value" % (table, column))
-	return result_to_dict(self.conn.execute(query, vaue=value))
+		query = text("SELECT * FROM :table WHERE :column = :value")
+	return result_to_dict(self.conn.execute(query, table=tablue, column=column, value=value))
 	
 def get_data_simple(self, table, columns):
 	#Simple way to get data, will likely only be used for the game, title, and topic functions
 	columns = "(" + ','.join(x for x in columns) + ")"
-	query = text("SELECT %s FROM %s" % (table, columns))
-	return result_to_dict(self.conn.execute(query))
+	query = text("SELECT :table FROM :columns")
+	return result_to_dict(self.conn.execute(query, table=table, columns=columns))
 	
 def extend_data(self, table, column, values):
 	values = encode_list(values)
@@ -929,53 +930,54 @@ def extend_data(self, table, column, values):
 	for index, value in enumerate(values):
 		values[index] = "(%s)" % repr(value)
 	values = ', '.join(x for x in values)
-	query = text("INSERT INTO %s (%s) VALUES %s" % (table, column, values)) 
-	self.conn.execute(query)
+	query = text("INSERT INTO :table (:column) VALUES :values") 
+	self.conn.execute(query, table=table, column=column, values=values)
 ##def update_8ball_table(self, type, 
 
 def delete_index_handler(self, table, index):
 	len_table = get_len_table(self, table)
 	if not index > 0 or not index <= len_table:
 		return False
-	query = "SELECT * FROM %s LIMIT %s" % (table, index)
-	result = result_to_dict(self.conn.execute(query))
+	query = text("SELECT * FROM :table LIMIT :index")
+	result = result_to_dict(self.conn.execute(query, table=table, index=index))
 	if len(result) == index: #could be len -1 = delete_index -1 to be more readable but ehh
 		delete_row = result[len(result)-1]
 	else:
 		print "This shouldn't happen"
 		full_exit()
-	query = "DELETE FROM %s WHERE `index` = %s" % (table, delete_row["index"])
-	self.conn.execute(query)
+	query = "DELETE FROM %s WHERE `index` = :index"
+	self.conn.execute(query, index=delete_row["index"])
 	return delete_row
 
 def delete_value_handler(self, table, column, value):
 	if isinstance(value, basestring):
-		query = text("SELECT * FROM %s WHERE `%s` = :value LIMIT 1" % (table, column, value))
+		query = text("SELECT * FROM :table WHERE :column = :value LIMIT 1")
 	else:
-		query = text("SELECT * FROM %s WHERE `%s` = :value LIMIT 1" % (table, column, value))
-	res = result_to_dict(self.conn.execute(query, value=value))
+		query = text("SELECT * FROM :table WHERE :column = :value LIMIT 1")
+	res = result_to_dict(self.conn.execute(query, table=table, column=column, value=value))
 	if res:
 		if isinstance(value, basestring):
-			query = text("DELETE FROM %s WHERE `%s` = :value LIMIT 1" % (table, column, value))
+			query = text("DELETE FROM :table WHERE :column = :value LIMIT 1")
 		else:
-			query = text("DELETE FROM %s WHERE `%s` = :value LIMIT 1" % (table, column, value))
-		self.conn.execute(query, value=value)
+			query = text("DELETE FROM :table WHERE :column = :value LIMIT 1")
+		self.conn.execute(query, table=table, column=column, value=value)
 		return res[0]
 	else:
 		return False
 		
 def get_table(self, table):
-	query = "SELECT * FROM %s" % table
-	return result_to_dict(self.conn.execute(query))
+	query = "SELECT * FROM :table"
+	return result_to_dict(self.conn.execute(query, table=table))
 	
 def clear_table(self, table):
-	query = "DELETE FROM %s" % table
-	self.conn.execute(query)
+	query = "DELETE FROM :table"
+	self.conn.execute(query, table=table)
 
 def database_exists(channel_parsed):
 	query = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = '%s'" % channel_parsed
 	engine = create_engine("mysql://root@localhost:3306/")
 	res = result_to_dict(engine.execute(query))[0]["COUNT(*)"]
+	print res
 	if res > 0:
 		return True
 	else:
@@ -1081,12 +1083,6 @@ CREATE DATABASE IF NOT EXISTS `%s`;
 	  PRIMARY KEY (`index`)
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
-	CREATE TABLE IF NOT EXISTS `link_warn` (
-	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-	  `set_time` double NOT NULL,
-	  `user` varchar(500) DEFAULT NULL,
-	  PRIMARY KEY (`index`)
-	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
 	CREATE TABLE IF NOT EXISTS `link_whitelists` (
 	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
@@ -1125,73 +1121,50 @@ CREATE DATABASE IF NOT EXISTS `%s`;
 	  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 	  `display_id` varchar(500) DEFAULT NULL,
 	  `feature_status` tinyint(4) DEFAULT NULL,
+	  `feature_level` tinyint(4) DEFAULT NULL,
 	  PRIMARY KEY (`id`)
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 	
-	INSERT INTO `main` (`id`, `display_id`, `feature_status`) VALUES
-		(1, 'antispam', 1),
-		(2, 'caps_warn', 1),
-		(3, 'emote_warn', 1),
-		(4, 'fake_purge_warn', 1),
-		(5, 'skincode_warn', 1),
-		(6, 'long_message_warn', 1),
-		(7, 'symbol_warn', 1),
-		(8, 'link_warn', 1),
-		(9, 'spam_warn', 1),
-		(10, 'long_word_warn', 1),
-		(11, 'me_warn', 1),
-		(12, 'ip_warn', 1),
-		(13, 'ban_emote_warn', 1),
-		(14, 'banphrase_warn', 1),
-		(15, 'link_whitelist_warn', 1),
-		(16, 'link_whitelists', 1),
-		(17, 'spam_permits', 1),
-		(18, 'banphrases', 1),
-		(19, 'autoreplies', 1),
-		(20, 'ban_emotes', 1),
-		(21, 'command_dict', 1),
-		(22, 'commands', 1),
-		(23, 'repeats', 1),
-		(24, 'countdowns', 1),
-		(25, 'raffle', 0),
-		(26, 'lottery', 0),
-		(27, 'vote_options', 1),
-		(28, 'votes', 0),
-		(29, 'chatters', 1),
-		(30, 'permanent_chatters', 1),
-		(31, 'lurkers', 1),
-		(32, 'followers', 1),
-		(33, 'new_followers', 1),
-		(34, 'viewers', 1),
-		(35, 'new_viewers', 1),
-		(36, '8ball_responses', 1),
-		(37, 'time_units', 1),
-		(38, 'reply_args', 1),
-		(39, 'default_commands', 1),
-		(40, 'point_users', 1),
-		(41, 'roulette', 1),
-		(42, 'roll', 1),
-		(43, 'math', 1),
-		(44, 'coin', 1),
-		(45, 'topic', 1),
-		(46, 'repeat_antispam', 1),
-		(47, 'emote_antispam', 1),
-		(48, 'caps_antispam', 1),
-		(49, 'long_message_antispam', 1),
-		(50, 'long_word_antispam', 1),
-		(51, 'fake_purge_antispam', 1),
-		(52, 'skincode_antispam', 1),
-		(53, 'stats', 1),
-		(54, 'symbol_antispam', 1),
-		(55, 'link_whitelist_antispam', 1),
-		(56, 'me_antispam', 1),
-		(57, 'ip_antispam', 1),
-		(58, 'purges', 1),
-		(59, 'points', 1),
-		(60, 'slots', 1),
-		(61, 'give', 1),
-		(61, 'views', 1),
-		(61, 'uptime', 1);
+	INSERT INTO `main` (`id`, `display_id`, `feature_status`, `feature_level`) VALUES
+		(1, 'antispam', 1, NULL),
+		(2, 'link_whitelists', 1, 2),
+		(3, 'spam_permits', 1, NULL),
+		(4, 'banphrases', 1, 2),
+		(5, 'autoreplies', 1, 2),
+		(6, 'ban_emotes', 1, NULL),
+		(7, 'commands', 1, 2),
+		(8, 'repeats', 1, 2),
+		(9, 'countdowns', 1, 2),
+		(10, 'raffle', 0, 2),
+		(11, 'lottery', 0, 2),
+		(12, 'votes', 0, 2),
+		(13, 'chatters', 1, 4),
+		(14, 'followers', 1, 4),
+		(15, 'viewers', 1, 4),
+		(16, '8ball_responses', 1, 2),
+		(17, 'roulette', 1, 4),
+		(18, 'roll', 1, 4),
+		(19, 'math', 1, 4),
+		(20, 'coin', 1, 4),
+		(21, 'topic', 1, 1),
+		(22, 'repeat_antispam', 1, NULL),
+		(23, 'emote_antispam', 1, NULL),
+		(24, 'caps_antispam', 1, NULL),
+		(25, 'long_message_antispam', 1, NULL),
+		(26, 'long_word_antispam', 1, NULL),
+		(27, 'fake_purge_antispam', 1, NULL),
+		(28, 'skincode_antispam', 1, NULL),
+		(29, 'stats', 1, NULL),
+		(30, 'symbol_antispam', 1, NULL),
+		(31, 'link_whitelist_antispam', 1, NULL),
+		(32, 'me_antispam', 1, NULL),
+		(33, 'ip_antispam', 1, NULL),
+		(34, 'purges', 1, 3),
+		(35, 'points', 1, 4),
+		(36, 'slots', 1, 4),
+		(37, 'give', 1, 4),
+		(38, 'views', 1, 4),
+		(39, 'uptime', 1, 4);
 		
 	CREATE TABLE IF NOT EXISTS `me_warn` (
 	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
@@ -1325,8 +1298,8 @@ def update_chat_log(channel, time, message):
 
 def clear_chat_log(channel):
 	#remove all of a channel's chat messages, done when channel goes offline
-	query = "DELETE FROM main WHERE `channel` = '%s'" % channel
-	chat_log_conn.execute(query)
+	query = text("DELETE FROM main WHERE `channel` = :channel")
+	chat_log_conn.execute(query, channel=channel)
 	
 def get_word_count_global(word):
 	word = "%%%s%%" % word
@@ -1371,9 +1344,8 @@ class TwitchBot(irc.IRCClient, object):
 			title = stream_data[0]["channel"]["status"]
 			if is_empty(self, "title"):
 				insert_data(self, "title", ["title"], title.encode("utf-8"))
-		topic = ""
 		if is_empty(self, "topic"):
-			insert_data(self, "topic", ["topic"], topic)
+			insert_data(self, "topic", ["topic"], "")
 		
 		#Roulette
 		#we should put settings like this in an admin menu, along with the timeout durations and such
@@ -1397,7 +1369,7 @@ class TwitchBot(irc.IRCClient, object):
 		#######NOTE: ONLY USE THIS FOR DEBUGGING / DEV! AFTER THIS IT SHOULD ALWAYS BE EMPTY AND THIS WILL ONLY BE RUN ONCE!
 		##########
 		if is_empty(self, "8ball_responses"):
-			insert_row_data(self, "8ball_responses", ["responses"], ["It is certain", "It is decidedly so", "Without a doubt", "Yes, definitely", "You may rely on it", "As I see it, yes", "Most likely", "Outlook good", "Yes", "Signs point to yes", "Reply hazy try again", "Ask again later", "Better not tell you now", "Cannot predict now", "Concentrate and ask again", "Don't count on it", "My reply is no", "My sources say no", "Outlook not so good", "Very doubtful"])
+			insert_row_data(self, "`8ball_responses`", ["responses"], ["It is certain", "It is decidedly so", "Without a doubt", "Yes, definitely", "You may rely on it", "As I see it, yes", "Most likely", "Outlook good", "Yes", "Signs point to yes", "Reply hazy try again", "Ask again later", "Better not tell you now", "Cannot predict now", "Concentrate and ask again", "Don't count on it", "My reply is no", "My sources say no", "Outlook not so good", "Very doubtful"])
 		
 		#For the bot
 		self.time_unit_arr = ["sec", "secs", "second", "seconds", "min", "mins", "minute", "minutes", "hr", "hrs", "hour", "hours", "day", "days", "week", "weeks"]
@@ -2750,10 +2722,10 @@ class TwitchBot(irc.IRCClient, object):
 							vote_users = json.loads(votes_table[row_index]["users"])
 							vote_users.remove(user)
 							vote_users = repr(json.dumps(vote_users))
-							query = "UPDATE votes SET users = %s WHERE `index` = %s" % (vote_users, votes_table[row_index]["index"])
-							self.conn.execute(query)
-							query = "UPDATE votes SET votes = votes-1 WHERE `index` = %s" % row["index"]
-							self.conn.execute(query)
+							query = text("UPDATE votes SET users = :users WHERE `index` = :index")
+							self.conn.execute(query, users=vote_users, index=votes_table[row_index]["index"])
+							query = text("UPDATE votes SET votes = votes-1 WHERE `index` = :index")
+							self.conn.execute(query, index=row["index"])
 							vote_total -=1
 							send_str = "Vote removed."
 							whisper(user, send_str)
@@ -2825,26 +2797,26 @@ class TwitchBot(irc.IRCClient, object):
 								#do nothing if they are already in it, if not then find add them and remove them from the one they used to be in
 								#convert row["users"] to list here again
 								if user not in row["users"]:
-									query = "UPDATE votes SET votes = votes+1 WHERE `index` = %s" % row["index"]
-									self.conn.execute(query)
+									query = text("UPDATE votes SET votes = votes+1 WHERE `index` = :index")
+									self.conn.execute(query, index=row["index"])
 									vote_users = json.loads(votes_table[row_index]["users"])
 									vote_users.append(user)
 									vote_users = repr(json.dumps(vote_users))
-									query = "UPDATE votes SET users = %s WHERE `index` = %s" % (vote_users, votes_table[row_index]["index"])
-									self.conn.execute(query)
+									query = text("UPDATE votes SET users = :users WHERE `index` = :index")
+									self.conn.execute(query, users=vote_users, index=votes_table[row_index]["index"])
 									vote_total+=1
 									#if it's not the option they want and they are in it then remove them
 									for old_row_index, old_row in enumerate(votes_table):
 										#convert the users to list
 										if old_row["option"] != msg_arr[1] and user in old_row["users"]:
-											query = "UPDATE votes SET votes = votes-1 WHERE `index` = %s" % old_row["index"]
-											self.conn.execute(query)
+											query = text("UPDATE votes SET votes = votes-1 WHERE `index` = %s")
+											self.conn.execute(query, index=old_row["index"])
 											vote_total-=1
 											vote_users = json.loads(votes_table[old_row_index]["users"])
 											vote_users.remove(user)
 											vote_users = repr(json.dumps(vote_users))
-											query = "UPDATE votes SET users = %s WHERE `index` = %s" % (vote_users, votes_table[old_row_index]["index"])
-											self.conn.execute(query)
+											query = text("UPDATE votes SET users = :users WHERE `index` = :index")
+											self.conn.execute(query, users=vote_users, index=votes_table[old_row_index]["index"])
 											send_str = "Vote changed."
 											whisper(user, send_str)
 											break
@@ -2872,13 +2844,13 @@ class TwitchBot(irc.IRCClient, object):
 								if vote_choice_index == row_index+1:
 									#convert to list
 									if user not in row["users"]:
-										query = "UPDATE votes SET votes = votes+1 WHERE `index` = %s" % row["index"]
-										self.conn.execute(query)
+										query = text("UPDATE votes SET votes = votes+1 WHERE `index` = :index")
+										self.conn.execute(query, index=row["index"])
 										vote_users = json.loads(votes_table[row_index]["users"])
 										vote_users.append(user)
 										vote_users = repr(json.dumps(vote_users))
-										query = "UPDATE votes SET users = %s WHERE `index` = %s" % (vote_users, votes_table[row_index]["index"])
-										self.conn.execute(query)
+										query = text("UPDATE votes SET users = :users WHERE `index` = :index")
+										self.conn.execute(query, users=vote_users, index=votes_table[row_index]["index"])
 										vote_total+=1
 										#if it's not the option they want and they are in it then remove them
 										for old_row_index, old_row in enumerate(votes_table):
@@ -2887,10 +2859,10 @@ class TwitchBot(irc.IRCClient, object):
 												vote_users = json.loads(votes_table[row_index]["users"])
 												vote_users.remove(user)
 												vote_users = repr(json.dumps(vote_users))
-												query = "UPDATE votes SET users = %s WHERE `index` = %s" % (vote_users, votes_table[old_row_index]["index"])
-												self.conn.execute(query)
-												query = "UPDATE votes SET votes = votes-1 WHERE `index` = %s" % old_row["index"]
-												self.conn.execute(query)
+												query = text("UPDATE votes SET users = :users WHERE `index` = :index")
+												self.conn.execute(query, users=vote_users, index=votes_table[old_row_index]["index"])
+												query = text("UPDATE votes SET votes = votes-1 WHERE `index` = :index")
+												self.conn.execute(query, index=row["index"])
 												send_str = "Vote changed."
 												vote_total-=1
 												whisper(user, send_str)
@@ -3874,11 +3846,11 @@ class TwitchBot(irc.IRCClient, object):
 		
 		if get_status(self, "repeats"):
 			current_time = time.time()
-			query = "SELECT * FROM repeats WHERE (%d - set_time > `interval` )" % current_time
-			result = self.conn.execute(query)
+			query = text("SELECT * FROM repeats WHERE (:current_time - set_time > `interval` ))")
+			result = self.conn.execute(query, current_time=current_time)
 			for repeat_row in result:
-				query = "UPDATE repeats SET set_time=%d WHERE `index`=%s" % (current_time, repeat_row[0])
-				self.conn.execute(query)
+				query = text("UPDATE repeats SET set_time=:current_time WHERE `index`=:index")
+				self.conn.execute(query, current_time=current_time, index=repeat_row[0])
 				#have to ahve this for some reason idk whhy it breaks without it
 				try:
 					self.write(repeat_row[2])
@@ -3889,12 +3861,12 @@ class TwitchBot(irc.IRCClient, object):
 	def countdown_check(self):
 		if get_status(self, "countdowns"):
 			current_time = time.time()
-			query = "SELECT * FROM countdowns WHERE (%d - set_time > `duration` )" % current_time
-			result = self.conn.execute(query)
+			query = text("SELECT * FROM countdowns WHERE (:current_time - set_time > `duration` )")
+			result = self.conn.execute(query, current_time=current_time)
 			for countdown_row in result:
 				#have to ahve this for some reason idk whhy it breaks without it
-				query = "DELETE FROM countdowns WHERE `index` = %d" % countdown_row["index"]
-				self.conn.execute(query)
+				query = text("DELETE FROM countdowns WHERE `index` = :index")
+				self.conn.execute(query, index=countdown_row["index"])
 				try:
 					self.write(countdown_row["command"])
 				except:
