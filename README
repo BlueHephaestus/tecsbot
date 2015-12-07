@@ -43,3 +43,5 @@ Current features (In no special order)
 26. Points - !points <user>
 27. Give points - !give <user> <points>
 28. Emote slots - !slots
+29. Bot editors - !editors add/delete/remove/list/clear <user>
+30. Change level requirement - !level <level> <feature>
