@@ -586,12 +586,13 @@ def caps_perc(msg):
 
 def check_user_permit(self, user):
 	#return True if they have a permit and can go on, False if not
-	query = text("SELECT COUNT(*) FROM spam_permits WHERE user = :user" )
+	query = text("SELECT COUNT(*) FROM `%s` WHERE user = :user" % self.permit_display_id)
 	res = result_to_dict(self.conn.execute(query, user=user))
 	if res[0]["COUNT(*)"] <= 0:
 	#user has no permits
 		return False
-	if has_count(self, self.permit_display_id, ["user", "type"], [user, "permanent"]):
+	query = text("SELECT COUNT(*) FROM `%s` WHERE `user` = :user AND `type` = :type" % (self.permit_display_id))
+	if result_to_dict(self.conn.execute(query, user=user, type="permanent"))[0]["COUNT(*)"] > 0:
 		#user has a permanent permit
 		return True
 	permit_row = get_data_where(self, self.permit_display_id, "user", user)
@@ -610,7 +611,7 @@ def check_user_permit(self, user):
 				#message
 				if int(row["duration"]) > 0:
 					#they still have some left, update duration 
-					query = text("UPDATE spam_permits SET duration = duration - 1 WHERE `index` = :index" )
+					query = text("UPDATE `%s` SET duration = duration - 1 WHERE `index` = :index" % self.permit_display_id)
 					self.conn.execute(query, index=row["index"])
 					final_return_arr[row_index] = True
 				else:
@@ -636,7 +637,7 @@ def check_user_permit(self, user):
 			#message
 			if int(permit_row["duration"]) > 0:
 				#they still have some left, update duration 
-				query = text("UPDATE spam_permits SET duration = duration - 1 WHERE `index` = :index")
+				query = text("UPDATE `%s` SET duration = duration - 1 WHERE `index` = :index" % self.permit_display_id)
 				self.conn.execute(query, index=permit_row["index"])
 				return True
 			else:
@@ -647,13 +648,13 @@ def check_user_permit(self, user):
 def warn(user, msg, channel_parsed, self, warn_table, warn_duration, warn_cooldown, timeout_msg, timeout_duration):
 	#function to warn if they havent already been warned, and time them out if they have.
 	if not check_user_permit(self, user):
-		query = text("SELECT COUNT(*) FROM :table WHERE user = :user")
+		query = text("SELECT COUNT(*) FROM `%s` WHERE user = :user" % warn_table)
 		res = result_to_dict(self.conn.execute(query, table=warn_table, user=user))
 		if res[0]["COUNT(*)"] > 0:
 			current_time = time.time()
 			#check if current time is longer than the warning duration from the last time name was entered
-			query = text("SELECT * FROM :table WHERE user = :user and (:current_time - set_time <= :cooldown) LIMIT 1")
-			row = result_to_dict(self.conn.execute(query, table=warn_table, user=user, current_time=current_time, cooldown=warn_cooldown))
+			query = text("SELECT * FROM `%s` WHERE user = :user and (:current_time - set_time <= :cooldown) LIMIT 1" % warn_table)
+			row = result_to_dict(self.conn.execute(query, user=user, current_time=current_time, cooldown=warn_cooldown))
 			if row != []:
 				#they did a bad thing in a time less than the cooldown, time out for long duration
 				#timeout user for long duration and remove from array
@@ -662,32 +663,32 @@ def warn(user, msg, channel_parsed, self, warn_table, warn_duration, warn_cooldo
 				send_str = "No %s allowed (%s)" % (timeout_msg, user.capitalize())
 				self.write(send_str)
 				whisper_msg = "You were timed out for %s in %s (%s)" % (timeout_msg, channel_parsed, parse_sec(timeout_duration))
-				whisper(user, whisper_msg)
+				whisper(self, user, whisper_msg)
 			else:
 				#they did a bad thing in a time more than the cooldown, time out for short duration
 				#replace old entry with new one and send warning as well as timeout for warn_duration
 				#short duration
-				query = text("SELECT * FROM :table WHERE user = :user and (:current_time - set_time > :cooldown) LIMIT 1")
-				row = result_to_dict(self.conn.execute(query, table=warn_table, user=user, current_time=current_time, cooldown=warn_cooldown))
+				query = text("SELECT * FROM `%s` WHERE user = :user and (:current_time - set_time > :cooldown) LIMIT 1" % warn_table)
+				row = result_to_dict(self.conn.execute(query, user=user, current_time=current_time, cooldown=warn_cooldown))
 				timeout(user, self, warn_duration)
 				delete_value_handler(self, warn_table, "index", row[0]["index"])
-				query = text("INSERT INTO :table (`set_time`, `user`) VALUES (:time, :user)")
+				query = text("INSERT INTO `%s` (`set_time`, `user`) VALUES (:time, :user)" % warn_table)
 				self.conn.execute(query, time=current_time, user=user)
 				send_str = "No %s allowed (%s)(warning)" % (timeout_msg, user.capitalize())
 				self.write(send_str)
 				whisper_msg = "You were timed out for %s in %s (%s, warning)" % (timeout_msg, channel_parsed, parse_sec(warn_duration))		
-				whisper(user, whisper_msg)
+				whisper(self, user, whisper_msg)
 		else:
 			#add new entry and send warning, with timeout for warn_duration
 			#short duration
 			timeout(user, self, warn_duration)
 			current_time = time.time()
-			query = text("INSERT INTO :table (`set_time`, `user`) VALUES (:time, :user)")
+			query = text("INSERT INTO `%s` (`set_time`, `user`) VALUES (:time, :user)" % warn_table)
 			self.conn.execute(query, time=current_time, user=user)
 			send_str = "No %s allowed (%s)(warning)" % (timeout_msg, user.capitalize())
 			self.write(send_str)
 			whisper_msg = "You were timed out for %s in %s (%s, warning)" % (timeout_msg, channel_parsed, parse_sec(warn_duration))
-			whisper(user, whisper_msg)
+			whisper(self, user, whisper_msg)
 		
 def symbol_count(msg):
 	reg_chars = [',','.',' ','\'','\"','?', ';']
@@ -714,10 +715,31 @@ def check_int(num):
 		pass
 	return num
 
-def whisper(user, msg):
+def get_mods_msg(self, msg):
+	self.write("/mods")
+	while True:
+		if self.mods_msg != '':
+			msg = msg.replace("/mods", self.mods_msg)
+			self.write(msg)
+			self.mods_msg = ''
+			return
+			
+def get_whisper_mods_msg(self, user, msg):
+	self.write("/mods")
+	while True:
+		if self.mods_msg != '':
+			msg = msg.replace("/mods", self.mods_msg)
+			whisper(self, user, msg)
+			self.mods_msg = ''
+			return
+			
+def whisper(self, user, msg):
 	global whisper_user, whisper_msg
-	whisper_user = user
-	whisper_msg = msg
+	if "/mods" in msg:
+		thread.start_new_thread(get_whisper_mods_msg, (self, user, msg))
+	else:
+		whisper_user = user
+		whisper_msg = msg
 	
 def whisper_response(msg):
 	#edit this when it's time for variables
@@ -801,23 +823,23 @@ def insert_permit(self, permit_pair):
 	permit_high_duration = permit_pair[2]
 	
 	if permit_high_type == "permanent":
-		query = text("DELETE FROM spam_permits WHERE user = :user")
+		query = text("DELETE FROM `%s` WHERE user = :user" % self.permit_display_id)
 		self.conn.execute(query, user=permit_high_user)
-		query = text("INSERT INTO `spam_permits` (`set_time`, `user`, `duration`, `type`) VALUES (:time, :user, :duration, :type)")
+		query = text("INSERT INTO `%s` (`set_time`, `user`, `duration`, `type`) VALUES (:time, :user, :duration, :type)" % self.permit_display_id)
 		self.conn.execute(query, time=permit_set_time, user=permit_high_user, duration=permit_high_duration, type=permit_high_type)
 		return True
 	else:
-		query = text("SELECT COUNT(*) FROM spam_permits WHERE user = :user and type = :type")
+		query = text("SELECT COUNT(*) FROM `%s` WHERE user = :user and type = :type" % self.permit_display_id)
 		res = result_to_dict(self.conn.execute(query, user=permit_high_user, type=type))
 		if res[0]["COUNT(*)"] <= 0:
 			#this user does not have a permanent permit, check with the others
-			query = text("DELETE FROM spam_permits WHERE type = :type and duration < :duration")
+			query = text("DELETE FROM `%s` WHERE type = :type and duration < :duration" % self.permit_display_id)
 			self.conn.execute(query, type=permit_high_type, duration=permit_high_duration)
-			query = text("SELECT COUNT(*) FROM spam_permits WHERE type = :type and duration > :duration")
+			query = text("SELECT COUNT(*) FROM `%s` WHERE type = :type and duration > :duration" % self.permit_display_id)
 			res = result_to_dict(self.conn.execute(query, type=permit_high_type, duration=permit_high_duration))
 			if res[0]["COUNT(*)"] <= 0:
 				#as long as there are none that are greater than ours(which means there are now no others of this type in the db), add it
-				query = text("INSERT INTO `spam_permits` (`set_time`, `user`, `duration`, `type`) VALUES (:time, :user, :duration, :type)")
+				query = text("INSERT INTO `%s` (`set_time`, `user`, `duration`, `type`) VALUES (:time, :user, :duration, :type)" % self.permit_display_id)
 				self.conn.execute(query, time=permit_set_time, user=permit_high_user, duration=permit_high_duration, type=permit_high_type)
 				return True
 	return False
@@ -878,22 +900,22 @@ def is_empty(self, table):
 		return True
 		
 def get_len_table(self, table):
-	query = text("SELECT COUNT(*) FROM :table")
-	res = result_to_dict(self.conn.execute(query, table=table))
+	query = "SELECT COUNT(*) FROM `%s`" % table
+	res = result_to_dict(self.conn.execute(query))
 	len_table = res[0]["COUNT(*)"]
 	return len_table
 
 def get_sum(self, table, column):
-	query = text("SELECT SUM(:column) FROM :table")
+	query = text("SELECT SUM(:column) FROM `%s`" % table)
 	res = int(result_to_dict(self.conn.execute(query, column, table))[0]["SUM(`%s`)"%column])
 	return res
 	
 def get_count(self, table, columns, values):
 	columns = "(" + ','.join(x for x in columns) + ")"
 	values = '(' + repr(values)[1:-1] + ')'
-	query = text("SELECT COUNT(*) FROM :table WHERE :columns = :values")
+	query = text("SELECT COUNT(*) FROM `%s` WHERE :columns = :values" % table)
 	return result_to_dict(self.conn.execute(query, table=table, columns=columns, values=values))[0]["COUNT(*)"]
-	
+		
 def has_count(self, table, column, value):
 	#same as get_count but returns a bool instead of an int
 	#columns = "(" + ','.join(x for x in columns) + ")"
@@ -906,7 +928,7 @@ def has_count(self, table, column, value):
 		return True
 	else:
 		return False
-		
+
 def get_status(self, display_id):
 	query = text("SELECT `feature_status` FROM main WHERE `display_id` = :display_id")
 	status = result_to_dict(self.conn.execute(query, display_id=display_id))
@@ -934,15 +956,15 @@ def update_data(self, table, columns, values):
 	else:
 		columns = columns[0]
 	values = '("' + repr(values)[1:-1] + '")'
-	query = text("UPDATE :table SET :columns = :values")
+	query = text("UPDATE `%s` SET :columns = :values" % table)
 	self.conn.execute(query, table=table, columns=columns, values=values)
 
 def get_data_where(self, table, column, value):
 	if isinstance(value, basestring):
-		query = text("SELECT * FROM :table WHERE :column = :value")
+		query = text("SELECT * FROM `%s` WHERE `%s` = :value" % (table, column))
 	else:
-		query = text("SELECT * FROM :table WHERE :column = :value")
-	return result_to_dict(self.conn.execute(query, table=tablue, column=column, value=value))
+		query = text("SELECT * FROM `%s` WHERE `%s` = :value" % (table, column))
+	return result_to_dict(self.conn.execute(query, value=value))
 	
 def extend_data(self, table, column, values):
 	values = encode_list(values)
@@ -950,48 +972,48 @@ def extend_data(self, table, column, values):
 	for index, value in enumerate(values):
 		values[index] = "(%s)" % repr(value)
 	values = ', '.join(x for x in values)
-	query = text("INSERT INTO :table (:column) VALUES :values") 
-	self.conn.execute(query, table=table, column=column, values=values)
+	query = text("INSERT INTO `%s` (:column) VALUES :values" % table) 
+	self.conn.execute(query, column=column, values=values)
 ##def update_8ball_table(self, type, 
 
 def delete_index_handler(self, table, index):
 	len_table = get_len_table(self, table)
 	if not index > 0 or not index <= len_table:
 		return False
-	query = text("SELECT * FROM :table LIMIT :index")
-	result = result_to_dict(self.conn.execute(query, table=table, index=index))
+	query = "SELECT * FROM `%s` LIMIT %d" % (table, index)
+	result = result_to_dict(self.conn.execute(query))
 	if len(result) == index: #could be len -1 = delete_index -1 to be more readable but ehh
 		delete_row = result[len(result)-1]
 	else:
 		print "This shouldn't happen"
 		full_exit()
-	query = text("DELETE FROM %s WHERE `index` = :index")
-	self.conn.execute(query, index=delete_row["index"])
+	query = "DELETE FROM `%s` WHERE `index` = %d" % (table, delete_row["index"])
+	self.conn.execute(query)
 	return delete_row
 
 def delete_value_handler(self, table, column, value):
 	if isinstance(value, basestring):
-		query = text("SELECT * FROM :table WHERE :column = :value LIMIT 1")
+		query = text("SELECT * FROM `%s` WHERE `%s` = :value LIMIT 1" % (table, column))
 	else:
-		query = text("SELECT * FROM :table WHERE :column = :value LIMIT 1")
-	res = result_to_dict(self.conn.execute(query, table=table, column=column, value=value))
+		query = text("SELECT * FROM `%s` WHERE `%s` = :value LIMIT 1" % (table, column))
+	res = result_to_dict(self.conn.execute(query, value=value))
 	if res:
 		if isinstance(value, basestring):
-			query = text("DELETE FROM :table WHERE :column = :value LIMIT 1")
+			query = text("DELETE FROM `%s` WHERE `%s` = :value LIMIT 1" % (table, column))
 		else:
-			query = text("DELETE FROM :table WHERE :column = :value LIMIT 1")
-		self.conn.execute(query, table=table, column=column, value=value)
+			query = text("DELETE FROM `%s` WHERE `%s` = :value LIMIT 1" % (table, column))
+		self.conn.execute(query, value=value)
 		return res[0]
 	else:
 		return False
 		
 def get_table(self, table):
-	query = "SELECT * FROM %s" % table
+	query = "SELECT * FROM `%s`" % table
 	return result_to_dict(self.conn.execute(query))
 	
 def clear_table(self, table):
-	query = text("DELETE FROM :table")
-	self.conn.execute(query, table=table)
+	query = "DELETE	FROM `%s`" % table
+	self.conn.execute(query)
 
 def database_exists(channel_parsed):
 	query = text("SELECT COUNT(*) FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = :channel")
@@ -1179,7 +1201,7 @@ CREATE DATABASE IF NOT EXISTS `%s`;
 	INSERT INTO `main` (`id`, `display_id`, `feature_status`, `feature_level`) VALUES
 		(1, 'antispam', 1, 3),
 		(2, 'link whitelist', 1, 2),
-		(3, 'permit', 1, NULL),
+		(3, 'permit', 1, 3),
 		(4, 'banphrase', 1, 2),
 		(5, 'autoreply', 1, 2),
 		(6, 'ban_emotes', 1, NULL),
@@ -1207,7 +1229,7 @@ CREATE DATABASE IF NOT EXISTS `%s`;
 		(28, 'skincode antispam', 1, NULL),
 		(29, 'stats', 1, 4),
 		(30, 'symbol antispam', 1, NULL),
-		(31, 'link whitelist antispam', 1, NULL),
+		(31, 'link antispam', 1, NULL),
 		(32, 'me antispam', 1, NULL),
 		(33, 'ip antispam', 1, NULL),
 		(34, 'purge', 1, 3),
@@ -1223,8 +1245,8 @@ CREATE DATABASE IF NOT EXISTS `%s`;
 		(44, 'title', 1, 4),
 		(45, 'game', 1, 4),
 		(46, 'topic', 1, 4),
-		(47, 'moderators', 1, 4);
-		
+		(47, 'moderators', 1, 4),
+		(48, 'level', 1, 2);
 	CREATE TABLE IF NOT EXISTS `me_warn` (
 	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 	  `set_time` double NOT NULL,
@@ -1371,6 +1393,13 @@ def get_word_count(word, channel):
 	query = text("SELECT COUNT(*) FROM main WHERE message LIKE :word and channel = :channel")
 	res = result_to_dict(chat_log_conn.execute(query, word=word, channel=channel))
 	return res[0]["COUNT(*)"]
+
+def possessive_prettify(word):
+	if word.endswith("s"):
+		word += "'"
+	else:
+		word += "'s"
+	return word
 	
 class TwitchBot(irc.IRCClient, object):
 
@@ -1437,6 +1466,7 @@ class TwitchBot(irc.IRCClient, object):
 		self.game_display_id = "game"
 		self.subcribers_display_id = "subscribers"
 		self.moderators_display_id = "moderators"
+		self.level_display_id = "level"
 		
 		#Raffle and Lottery
 		self.raffle_point_value = 0
@@ -1476,6 +1506,7 @@ class TwitchBot(irc.IRCClient, object):
 		self.reply_args_arr = ["{*USER*}", "{*TO_USER*}", "{*GAME*}", "{*STATUS*}", "{*TOPIC*}", "{*VIEWERS*}", "{*CHATTERS*}", "{*VIEWS*}", "{*FOLLOWERS*}"]
 		#perhaps we should make this vvv a table
 		self.default_cmd_arr = ['!link whitelist', '!permit', '!banphrase', '!autoreply', '!set', '!vote', '!raffle', '!roulette', '!8ball', '!uptime', '!chatters', '!viewers', '!subs', '!subscribers', '!commercial', '!ban emote', '!repeat', '!title', '!topic', '!game', '!purge', '!math', '!roll', '!coin', '!countdown']
+		self.mods_msg = ''
 		
 		#For the channel stats
 		self.follower_arr = []
@@ -1528,11 +1559,11 @@ class TwitchBot(irc.IRCClient, object):
 								send_str = "%s is not a valid link." % (link_whitelist)
 						else:
 							send_str = "Usage: \"!link whitelist add <link>\""
-							whisper(user, send_str)
+							whisper(self, user, send_str)
 							return
 					else:
 						send_str = "You don't have the correct permissions to use \"!link whitelist add\"." 
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 				elif in_front(link_whitelist_del_str, msg) or in_front(link_whitelist_rem_str, msg):
 					if has_level(self, user, channel_parsed, user_type, self.link_whitelist_display_id):
@@ -1554,11 +1585,11 @@ class TwitchBot(irc.IRCClient, object):
 									send_str = "Specified link does not exist." 
 						else:
 							send_str = "Usage: \"!link whitelist delete/remove <link/index>\"" 
-							whisper(user, send_str)
+							whisper(self, user, send_str)
 							return
 					else:
 						send_str = "You don't have the correct permissions to use \"!link whitelist delete/remove\"." 
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 				elif link_whitelist_list_str == msg:
 					link_whitelist_table = get_table(self, self.link_whitelist_display_id)
@@ -1573,25 +1604,25 @@ class TwitchBot(irc.IRCClient, object):
 							else:
 								#last element in arr
 								send_str += "(%s.) %s." % (row_index+1, link_whitelist_table[row_index]["link"])
-					if not has_level(self, user, channel_parsed, user_type, "link whitelists"):
-						whisper(user, send_str)		
+					if not has_level(self, user, channel_parsed, user_type, self.link_whitelist_display_id):
+						whisper(self, user, send_str)		
 						return
 						
 				elif in_front(link_whitelist_clr_str, msg):
-					if has_level(self, user, channel_parsed, user_type, "link whitelists"):
+					if has_level(self, user, channel_parsed, user_type, self.link_whitelist_display_id):
 						clear_table(self, self.link_whitelist_display_id)
 						send_str = "All links removed." 
 					else:
 						send_str = "You don't have the correct permissions to use \"!link whitelist clear\"." 
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 				elif in_front(link_whitelist_str, msg):
 					send_str = "Add or remove links to timeout users who say them. Syntax and more information can be found in the documentation." 
-					whisper(user, send_str)
+					whisper(self, user, send_str)
 					return
 				else:
 					send_str = "Usage: \"!link whitelist add/delete/remove/list/clear\"" 
-					whisper(user, send_str)
+					whisper(self, user, send_str)
 					return
 				self.write(send_str)
 			else:
@@ -1676,7 +1707,7 @@ class TwitchBot(irc.IRCClient, object):
 											send_str = "This user already has a permit with a permanent or longer duration"
 									else:
 										send_str = "Usage: !permit add <user> message/time/<time> <message count/time duration/time unit>/permanent" 
-										whisper(user, send_str)
+										whisper(self, user, send_str)
 										return	
 								elif len(msg_arr) == 5:
 									if msg_arr[3] == "time":
@@ -1692,7 +1723,7 @@ class TwitchBot(irc.IRCClient, object):
 												send_str = "This user already has a permit with a permanent or longer duration"
 										else:
 											send_str = "Usage: !permit add <user> message/time/<time> <message count/time duration/time unit>/permanent" 
-											whisper(user, send_str)
+											whisper(self, user, send_str)
 											return
 									elif msg_arr[3] == "message":
 										if is_num(msg_arr[4]):
@@ -1706,7 +1737,7 @@ class TwitchBot(irc.IRCClient, object):
 												send_str = "This user already has a permit with a permanent or longer duration"
 										else:
 											send_str = "Usage: !permit add <user> message/time/<time> <message count/time duration/time unit>/permanent" 
-											whisper(user, send_str)
+											whisper(self, user, send_str)
 											return
 									elif is_num(msg_arr[3]):
 										if msg_arr[4] in self.time_unit_arr:
@@ -1723,7 +1754,7 @@ class TwitchBot(irc.IRCClient, object):
 												send_str = "This user already has a permit with a permanent or longer duration"
 										else:
 											send_str = "Usage: !permit add <user> message/time/<time> <message count/time duration/time unit>/permanent" 
-											whisper(user, send_str)
+											whisper(self, user, send_str)
 											return
 								elif len(msg_arr) == 6:
 									if msg_arr[3] == "time" and is_num(msg_arr[4]) and msg_arr[5] in self.time_unit_arr:
@@ -1739,19 +1770,19 @@ class TwitchBot(irc.IRCClient, object):
 											send_str = "This user already has a permit with a permanent or longer duration"
 									else:
 										send_str = "Usage: !permit add <user> message/time/<time> <message count/time duration/time unit>/permanent" 
-										whisper(user, send_str)
+										whisper(self, user, send_str)
 										return
 								else:
 									send_str = "Usage: !permit add <user> message/time/<time> <message count/time duration/time unit>/permanent" 
-									whisper(user, send_str)
+									whisper(self, user, send_str)
 									return
 							else:
 								send_str = "Usage: !permit add <user> message/time/<time> <message count/time duration/time unit>/permanent" 
-								whisper(user, send_str)
+								whisper(self, user, send_str)
 								return
 						else:
 							send_str = "Usage: !permit add <user> message/time/<time> <message count/time duration/time unit>/permanent" 
-							whisper(user, send_str)
+							whisper(self, user, send_str)
 							return
 								
 					#delete/remove
@@ -1781,7 +1812,7 @@ class TwitchBot(irc.IRCClient, object):
 						else:
 							#incorrectly formatted, display usage
 							send_str = "Usage: \"!permit delete/remove <user/index>\"." 
-							whisper(user, send_str)
+							whisper(self, user, send_str)
 							return
 					#list
 					elif permit_list_str == msg:
@@ -1808,7 +1839,7 @@ class TwitchBot(irc.IRCClient, object):
 									else:
 										send_str += "(%s.) %s : permanent." % (row_index+1, row["user"])
 						if not has_level(self, user, channel_parsed, user_type, self.permit_display_id):
-							whisper(user, send_str)		
+							whisper(self, user, send_str)		
 							return		
 					#clear
 					elif in_front(permit_clr_str, msg):
@@ -1820,7 +1851,7 @@ class TwitchBot(irc.IRCClient, object):
 							send_str = "Add or remove spam permits, allowing a user to message anything for a certain number of messages, or a length of time. Syntax and more information can be found in the documentation." 
 						else:
 							send_str = "You don't have the correct permissions to use !permit commands" 
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 					#!permit <user>...
 					elif len(msg_arr) >= 2:
@@ -1877,7 +1908,7 @@ class TwitchBot(irc.IRCClient, object):
 										send_str = "This user already has a permit with a permanent or longer duration"
 								else:
 									send_str = "Usage: !permit <user> message/time <message count/time duration>" 
-									whisper(user, send_str)
+									whisper(self, user, send_str)
 									return
 							elif len(msg_arr) == 4:
 								if msg_arr[2] == "time":
@@ -1893,7 +1924,7 @@ class TwitchBot(irc.IRCClient, object):
 											send_str = "This user already has a permit with a permanent or longer duration"
 									else:
 										send_str = "Usage: !permit <user> message/time <message count/time duration>" 
-										whisper(user, send_str)
+										whisper(self, user, send_str)
 										return
 								elif msg_arr[2] == "message":
 									if is_num(msg_arr[3]):
@@ -1907,7 +1938,7 @@ class TwitchBot(irc.IRCClient, object):
 											send_str = "This user already has a permit with a permanent or longer duration"
 									else:
 										send_str = "Usage: !permit <user> message/time <message count/time duration>/permanent" 
-										whisper(user, send_str)
+										whisper(self, user, send_str)
 										return
 								elif is_num(msg_arr[2]):
 									if msg_arr[3] in self.time_unit_arr:
@@ -1924,11 +1955,11 @@ class TwitchBot(irc.IRCClient, object):
 											send_str = "This user already has a permit with a permanent or longer duration"
 									else:
 										send_str = "Usage: !permit <user> message/time/<time> <message count/time duration/time unit>/permanent" 
-										whisper(user, send_str)
+										whisper(self, user, send_str)
 										return
 								else:
 									send_str = "Usage: !permit <user> message/time <message count/time duration>/permanent" 
-									whisper(user, send_str)
+									whisper(self, user, send_str)
 									return
 							elif len(msg_arr) == 5:
 								if msg_arr[2] == "time" and is_num(msg_arr[3]) and msg_arr[4] in self.time_unit_arr:
@@ -1945,28 +1976,28 @@ class TwitchBot(irc.IRCClient, object):
 										send_str = "This user already has a permit with a permanent or longer duration"
 								else:
 									send_str = "Usage: !permit <user> message/time/<time> <message count/time duration/time unit>/permanent" 
-									whisper(user, send_str)
+									whisper(self, user, send_str)
 									return
 							else:
 								send_str = "Usage: !permit <user> message/time <message count/time duration>/permanent" 
-								whisper(user, send_str)
+								whisper(self, user, send_str)
 								return
 						else:
 							send_str = "Usage: !permit <user> message/time <message count/time duration>/permanent" 
-							whisper(user, send_str)
+							whisper(self, user, send_str)
 							return
 					else:
 						if has_level(self, user, channel_parsed, user_type, self.permit_display_id):
 							send_str = "Add or remove spam permits, allowing a user to message anything for a certain number of messages, or a length of time. Syntax and more information can be found in the documentation." 
 						else:
 							send_str = "You don't have the correct permissions to use !permit commands" 
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 					
 									
 				else:
 					send_str = "You don't have the correct permissions to use !permit commands." 
-					whisper(user, send_str)
+					whisper(self, user, send_str)
 					return
 				self.write(send_str)
 			
@@ -1983,11 +2014,11 @@ class TwitchBot(irc.IRCClient, object):
 							send_str = "%s does not have a spam permit." % permit_user.lower()
 					else:
 						send_str = "Usage: \"!unpermit <user>\"" 
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 				else:
 					send_str = "You don't have the correct permissions to unpermit users." 
-					whisper(user, send_str)
+					whisper(self, user, send_str)
 					return
 				self.write(send_str)
 				
@@ -2084,7 +2115,7 @@ class TwitchBot(irc.IRCClient, object):
 			else:
 				
 				#links
-				if get_status(self, "link_whitelist_antispam"):
+				if get_status(self, self.link_antispam_display_id):
 					for word in msg.split(" "):
 						#we need to determine links for this sole reason
 						if re.search(self.link_regex, word):#if is link according to our regex
@@ -2128,23 +2159,23 @@ class TwitchBot(irc.IRCClient, object):
 							return True
 							
 				#caps spam
-				if get_status(self, "caps_antispam"):
+				if get_status(self, self.caps_antispam_display_id):
 					if len(msg) >= caps_perc_min_msg_len:
 						if caps_perc(msg) >= 60:
 							warn(user, msg, channel_parsed, self, "caps_warn", caps_warn_duration, caps_warn_cooldown, caps_timeout_msg, caps_timeout_duration)
 							return True
 				#fake purges
-				if get_status(self, "fake_purge_antispam"):
+				if get_status(self, self.fake_purge_antispam_display_id):
 					if msg in fake_purge_arr:
 						warn(user, msg, channel_parsed, self, "fake_purge_warn", fake_purge_warn_duration, fake_purge_warn_cooldown, fake_purge_timeout_msg, fake_purge_timeout_duration)
 						return True
 				#!skincode
-				if get_status(self, "skincode_antispam"):
+				if get_status(self, self.skincode_antispam_display_id):
 					if in_front(skincode_msg, msg):
 						warn(user, msg, channel_parsed, self, "skincode_warn", skincode_warn_duration, skincode_warn_cooldown, skincode_timeout_msg, skincode_timeout_duration)
 						return True
 				#long messages
-				if get_status(self, "long_message_antispam"):
+				if get_status(self, self.long_message_antispam_display_id):
 					if len(msg) > msg_length_max:
 						warn(user, msg, channel_parsed, self, "long_msg_warn", long_msg_warn_duration, long_msg_warn_cooldown, long_msg_timeout_msg, long_msg_timeout_duration)
 						return True
@@ -2156,7 +2187,7 @@ class TwitchBot(irc.IRCClient, object):
 
 				#excessive symbols
 				#if there are more than min_symbol_chars in message, check the percentage and amount
-				if get_status(self, "symbol_antispam"):
+				if get_status(self, self.symbol_antispam_display_id):
 					if len(msg) > min_symbol_chars:
 						symbol_num = symbol_count(msg)
 						symbol_perc = float(symbol_num) / len(msg)
@@ -2168,19 +2199,19 @@ class TwitchBot(irc.IRCClient, object):
 				#these need to be different types
 				msg_arr = msg.split(" ")
 				#long word spam
-				if get_status(self, "long_word_antispam"):
+				if get_status(self, self.long_word_antispam_display_id):
 					for word in msg_arr:
 						if len(word) > long_word_limit and '\n' not in word:
 							warn(user, msg, channel_parsed, self, "long_word_warn", long_word_warn_duration, long_word_warn_cooldown, long_word_timeout_msg, long_word_timeout_duration)
 							return True
 				#/me
-				if get_status(self, "me_antispam"):
+				if get_status(self, self.me_antispam_display_id):
 					if in_front(me_msg, msg):
 						warn(user, msg, channel_parsed, self, "me_warn", me_warn_duration, me_warn_cooldown, me_timeout_msg, me_timeout_duration)
 						return True
 					
 				#ip addresses
-				if get_status(self, "ip_antispam"):
+				if get_status(self, self.ip_antispam_display_id):
 					for word in msg.split(" "):
 						#we need to determine links for this sole reason
 						if re.search(self.ip_regex, word):#if is ip address according to our regex
@@ -2211,18 +2242,18 @@ class TwitchBot(irc.IRCClient, object):
 					if has_level(self, user, channel_parsed, user_type, self.banphrase_display_id): 
 						if len(msg_arr) > 2:#need to have this if statement more often
 							banphrase = msg_arr[2]
-							if has_count(self, self.banphrase_display_id, ["banphrase"], [banphrase]):
+							if has_count(self, self.banphrase_display_id, "banphrase", banphrase):
 								send_str = "%s is already a banphrase." % (banphrase)
 							else:
 								insert_data(self, self.banphrase_display_id, ["banphrase"], banphrase)
 								send_str = "\"%s\" added to list of banphrases." % (banphrase)
 						else:
 							send_str = "Usage: \"!banphrase add <banphrase>\"" 
-							whisper(user, send_str)
+							whisper(self, user, send_str)
 							return
 					else:
 						send_str = "You don't have the correct permissions to use \"!banphrase add\"." 
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 				elif in_front(banphrase_del_str, msg) or in_front(banphrase_rem_str, msg):
 					if has_level(self, user, channel_parsed, user_type, self.banphrase_display_id):
@@ -2244,11 +2275,11 @@ class TwitchBot(irc.IRCClient, object):
 									send_str = "Specified banphrase does not exist." 
 						else:
 							send_str = "Usage: \"!banphrase delete/remove <banphrase/index>\"" 
-							whisper(user, send_str)
+							whisper(self, user, send_str)
 							return
 					else:
 						send_str = "You don't have the correct permissions to use \"!banphrase delete/remove\"." 
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 				elif banphrase_list_str == msg:
 					banphrase_table = get_table(self, self.banphrase_display_id)
@@ -2264,7 +2295,7 @@ class TwitchBot(irc.IRCClient, object):
 								#last element in arr
 								send_str += "(%s.) %s." % (row_index+1, row["banphrase"])
 					if not has_level(self, user, channel_parsed, user_type, self.banphrase_display_id):
-						whisper(user, send_str)		
+						whisper(self, user, send_str)		
 						return		
 				elif in_front(banphrase_clr_str, msg):
 					if has_level(self, user, channel_parsed, user_type, self.banphrase_display_id): 
@@ -2272,14 +2303,14 @@ class TwitchBot(irc.IRCClient, object):
 						send_str = "All banphrases removed." 
 					else:
 						send_str = "You don't have the correct permissions to use \"!banphrase clear\"." 
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 				elif in_front(banphrase_str, msg):
 					if has_level(self, user, channel_parsed, user_type, self.banphrase_display_id): 
 						send_str = "Add or remove banphrases to timeout users who say them. Syntax and more information can be found in the documentation." 
 					else:
 						send_str = "You don't have the correct permissions to use !banphrase commands." 
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 				self.write(send_str)
 			else:
@@ -2309,8 +2340,8 @@ class TwitchBot(irc.IRCClient, object):
 								if len(ar_msg_arr) == 2:
 									ar_phrase = ar_msg_arr[0].rstrip().lstrip()
 									ar_reply = ar_msg_arr[1].rstrip().lstrip()
-									ar_pair = [ar_phrase, ar_reply]
-									if has_count(self, self.autoreply_display_id, ["phrase", "reply"], ar_pair):
+									query = text("SELECT COUNT(*) FROM `%s` WHERE `phrase` = :phrase AND `reply` = :reply" % (self.autoreply_display_id))
+									if result_to_dict(self.conn.execute(query, phrase=ar_phrase, reply=ar_reply))[0]["COUNT(*)"] > 0:
 										send_str = "%s is already an autoreply phrase." % (ar_pair[0])
 									else:
 										if not disconnect_cmd(ar_reply):
@@ -2322,21 +2353,21 @@ class TwitchBot(irc.IRCClient, object):
 								else:
 									#incorrectly formatted, display usage
 									send_str = "Usage: \"!autoreply add <phrase>:<reply>\"." 
-									whisper(user, send_str)
+									whisper(self, user, send_str)
 									return
 							else:
 								#incorrectly formatted, display usage
 								send_str = "Usage: \"!autoreply add <phrase>:<reply>\"." 
-								whisper(user, send_str)
+								whisper(self, user, send_str)
 								return
 						else:
 							#incorrectly formatted, display usage
 							send_str = "Usage: \"!autoreply add <phrase>:<reply>\"." 
-							whisper(user, send_str)
+							whisper(self, user, send_str)
 							return
 					else:
 						send_str = "You don't have the correct permissions to use \"!autoreply add\"." 
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 				#delete autoreplies
 				elif in_front(autoreply_del_str, msg) or in_front(autoreply_rem_str, msg):
@@ -2361,11 +2392,11 @@ class TwitchBot(irc.IRCClient, object):
 						else:
 							#incorrectly formatted, display usage
 							send_str = "Usage: \"!autoreply delete/remove <phrase/index>\"." 
-							whisper(user, send_str)
+							whisper(self, user, send_str)
 							return
 					else:
 						send_str = "You don't have the correct permissions to use \"!autoreply delete/remove\"." 
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 				#list autoreplies
 				elif autoreply_list_str == msg:
@@ -2384,7 +2415,7 @@ class TwitchBot(irc.IRCClient, object):
 								#last element in arr
 								send_str += "(%s.) %s: %s." % (row_index+1, row["phrase"], row["reply"])
 					if not has_level(self, user, channel_parsed, user_type, self.autoreply_display_id):
-						whisper(user, send_str)		
+						whisper(self, user, send_str)		
 						return			
 				#clear autoreplies
 				elif in_front(autoreply_clr_str, msg):
@@ -2393,7 +2424,7 @@ class TwitchBot(irc.IRCClient, object):
 						send_str = "All autoreplies removed." 
 					else:
 						send_str = "You don't have the correct permissions to use \"!autoreply clear\"." 
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 				#just autoreply string, display usage
 				elif in_front(autoreply_str, msg):
@@ -2401,14 +2432,14 @@ class TwitchBot(irc.IRCClient, object):
 						send_str = "Add or remove phrases that trigger automatic replies. Syntax and more information can be found in the documentation." 
 					else:
 						send_str = "You don't have the correct permissions to use !autoreply commands." 
-					whisper(user, send_str)
+					whisper(self, user, send_str)
 					return
 				else:
 					if has_level(self, user, channel_parsed, user_type, self.autoreply_display_id): 
 						send_str = "Usage: !autoreply add/delete/remove/list/clear" 
 					else:
 						send_str = "You don't have the correct permissions to use !autoreply commands." 
-					whisper(user, send_str)
+					whisper(self, user, send_str)
 					return
 				self.write(send_str)
 			else:			
@@ -2572,7 +2603,7 @@ class TwitchBot(irc.IRCClient, object):
 							
 						else:
 							send_str = "Usage: \"!set <feature> on/off \"." 
-							whisper(user, send_str)
+							whisper(self, user, send_str)
 							return
 					elif len(msg_arr) == 4:
 						#repeat antispam
@@ -2613,7 +2644,7 @@ class TwitchBot(irc.IRCClient, object):
 						
 						else:
 							send_str = "Usage: \"!set <feature> on/off \"." 
-							whisper(user, send_str)
+							whisper(self, user, send_str)
 							return		
 						#ban emotes
 						'''elif in_front(set_ban_emotes_str, msg):
@@ -2636,22 +2667,22 @@ class TwitchBot(irc.IRCClient, object):
 						
 						else:
 							send_str = "Usage: \"!set <feature> on/off \"." 
-							whisper(user, send_str)
+							whisper(self, user, send_str)
 							return	
 					else:
 						#usage
 						send_str = "Usage: \"!set <feature> on/off \"." 
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 					#just set_str, explain usage.
 					if set_str == msg:
 						send_str = "Turn features on or off. Usage: \"!set <feature> on/off \"." 
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 				else:
 					#not mod
 					send_str = "You don't have the correct permissions to use !set commands." 
-					whisper(user, send_str)
+					whisper(self, user, send_str)
 					return
 			else:
 				return False
@@ -2718,11 +2749,11 @@ class TwitchBot(irc.IRCClient, object):
 										send_str = "You must specify more than one option for a poll."
 						else:
 							send_str = "You don't have the correct permissions to start a poll." 
-							whisper(user, send_str)
+							whisper(self, user, send_str)
 							return
 					else:
 						send_str = "Usage: !poll start <option1, option2, ...>" 
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 				elif in_front(poll_options_str, msg):
 					if len(msg_arr) == 2:
@@ -2737,10 +2768,10 @@ class TwitchBot(irc.IRCClient, object):
 							send_str = "No votes to display."
 					else:
 						send_str = "Usage !poll options"
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 					if not has_level(self, user, channel_parsed, user_type, self.poll_display_id):
-						whisper(user, send_str)		
+						whisper(self, user, send_str)		
 						return
 				elif in_front(poll_reset_str, msg):
 					if has_level(self, user, channel_parsed, user_type, self.poll_display_id):
@@ -2751,7 +2782,7 @@ class TwitchBot(irc.IRCClient, object):
 						return 
 					else:
 						send_str = "You don't have the correct permissions to reset the poll votes." 
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 				elif in_front(poll_stats_str, msg):
 					if vote_on:
@@ -2809,7 +2840,7 @@ class TwitchBot(irc.IRCClient, object):
 						send_str = "There are no ongoing polls." 
 						
 					if not has_level(self, user, channel_parsed, user_type, self.poll_display_id):
-						whisper(user, send_str)		
+						whisper(self, user, send_str)		
 						return
 				elif in_front(vote_remove_str, msg):
 					votes_table = get_table(self, self.poll_display_id)
@@ -2825,11 +2856,11 @@ class TwitchBot(irc.IRCClient, object):
 							self.conn.execute(query, index=row["index"])
 							vote_total -=1
 							send_str = "Vote removed."
-							whisper(user, send_str)
+							whisper(self, user, send_str)
 							break
 					else:
 						send_str = "You have not yet voted for an option."
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 					return						
 				elif in_front(poll_end_str, msg) or in_front(poll_close_str, msg):
 					#close the vote
@@ -2881,10 +2912,10 @@ class TwitchBot(irc.IRCClient, object):
 							send_str = "There are no ongoing polls."
 					else:
 						send_str = "You don't have the correct permissions to end a poll." 
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 				else:
-					if has_count(self, self.poll_display_id, ["`option`"], [msg_arr[1].strip()]):
+					if has_count(self, self.poll_display_id, "`option`", msg_arr[1].strip()):
 						votes_table = get_table(self, self.poll_display_id)
 						vote_total = get_sum(self, self.poll_display_id, "votes")
 						#msg_arr[1] is a vote option
@@ -2915,20 +2946,20 @@ class TwitchBot(irc.IRCClient, object):
 											query = text("UPDATE votes SET users = :users WHERE `index` = :index")
 											self.conn.execute(query, users=vote_users, index=votes_table[old_row_index]["index"])
 											send_str = "Vote changed."
-											whisper(user, send_str)
+											whisper(self, user, send_str)
 											break
 									else:
 										send_str = "Vote added."
-										whisper(user, send_str)
+										whisper(self, user, send_str)
 									return
 								elif user in row["users"]:
 									send_str = "You have already voted for that option"
-									whisper(user, send_str)
+									whisper(self, user, send_str)
 									return#save some time, end this loop if they are already in the option they selected
 								break#this actually shouldn't be possible
 						else:
 							send_str = "Invalid vote option"
-							whisper(user, send_str)
+							whisper(self, user, send_str)
 						return 
 							
 					elif is_num(msg_arr[1].strip()):
@@ -2962,21 +2993,21 @@ class TwitchBot(irc.IRCClient, object):
 												self.conn.execute(query, index=row["index"])
 												send_str = "Vote changed."
 												vote_total-=1
-												whisper(user, send_str)
+												whisper(self, user, send_str)
 												break
 										else:
 											send_str = "Vote added."
-											whisper(user, send_str)
+											whisper(self, user, send_str)
 										return
 									elif user in row["users"]:
 										send_str = "You have already voted for that option"
-										whisper(user, send_str)
+										whisper(self, user, send_str)
 										return#save some time, end this loop if they are already in the option they selected
 									break#also shouldnt be possible
 							return 
 						else:
 							send_str = "Invalid index for vote choice."
-							whisper(user, send_str)
+							whisper(self, user, send_str)
 							return
 					else:
 						if has_level(self, user, channel_parsed, user_type, self.poll_display_id):
@@ -2986,7 +3017,7 @@ class TwitchBot(irc.IRCClient, object):
 								send_str = "Usage: !poll start/reset/stats/end/close" 
 						else:
 							send_str = "Usage: !vote <option/index>"
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 				self.write(send_str)
 			else:
@@ -2997,11 +3028,11 @@ class TwitchBot(irc.IRCClient, object):
 						send_str = "Usage: !poll start/reset/stats/end/close" 
 				else:
 					send_str = "Usage: !vote <option/index>"
-				whisper(user, send_str)
+				whisper(self, user, send_str)
 				return
 		elif vote_str == msg:
 			send_str = "Usage: !vote <option/index>"
-			whisper(user, send_str)
+			whisper(self, user, send_str)
 			return
 		else:
 			return False
@@ -3016,19 +3047,19 @@ class TwitchBot(irc.IRCClient, object):
 			if get_status(self, self.raffle_display_id):
 				#avoid duplicates
 				if raffle_str == msg:
-					if not has_count(self, self.raffle_display_id, ["user"], [user]):
+					if not has_count(self, self.raffle_display_id, "user", user):
 						insert_data(self, self.raffle_display_id, ["user"], user)
 						send_str = "You have been added to the raffle."
 					else:
 						send_str = "You are already in the raffle."
-					whisper(user, send_str)
+					whisper(self, user, send_str)
 					return
 				elif in_front(start_raffle_str, msg):
 					if has_level(self, user, channel_parsed, user_type, self.raffle_display_id):
 						send_str = "There is already an ongoing raffle." 
 					else:
 						send_str = "Only mods can start raffles." 
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 					
 				elif in_front(end_raffle_str, msg):
@@ -3042,7 +3073,7 @@ class TwitchBot(irc.IRCClient, object):
 							else:
 								send_str = "%s has won the raffle and obtained %s point!" % (winner, self.raffle_point_value)
 							whisper_str = "You now have %s points in this channel." % point_balance(self, winner)
-							whisper(winner, whisper_str)
+							whisper(self, winner, whisper_str)
 						else:
 							send_str = "No one joined the raffle, there is no winner." 
 						set_status(self, self.raffle_display_id, False)
@@ -3050,14 +3081,14 @@ class TwitchBot(irc.IRCClient, object):
 						
 					else:
 						send_str = "Only mods can end raffles." 
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 				else:
 					if has_level(self, user, channel_parsed, user_type, self.raffle_display_id):
 						send_str = "Usage: !raffle start/end <point value>"
 					else:
 						send_str = "Only mods can use !raffle commands"
-					whisper(user, send_str)
+					whisper(self, user, send_str)
 					return
 			else:
 				if in_front(start_raffle_str, msg):
@@ -3076,11 +3107,11 @@ class TwitchBot(irc.IRCClient, object):
 							send_str = "No raffle prize input, raffle started with prize of 0 points. Join the raffle with \"!raffle\"." 
 					else:
 						send_str = "Only mods can start raffles." 
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 				elif raffle_str == msg and has_level(self, user, channel_parsed, user_type, self.raffle_display_id):
 					send_str = "Usage: !raffle start/end <point value>" 
-					whisper(user, send_str)
+					whisper(self, user, send_str)
 					return
 				elif in_front(end_raffle_str, msg):
 					if has_level(self, user, channel_parsed, user_type, self.raffle_display_id):
@@ -3088,11 +3119,11 @@ class TwitchBot(irc.IRCClient, object):
 						self.write(send_str)	
 					else:
 						send_str = "Only mods can end raffles." 
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 				else:
 					send_str = "Usage: !raffle start/end <point value>" 
-					whisper(user, send_str)
+					whisper(self, user, send_str)
 					return
 			self.write(send_str)
 		else:
@@ -3111,7 +3142,7 @@ class TwitchBot(irc.IRCClient, object):
 						send_str = "There is already an ongoing lottery." 
 					else:
 						send_str = "Only mods can start lotteries." 
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 				elif in_front(end_lottery_str, msg):
 					if has_level(self, user, channel_parsed, user_type, self.lottery_display_id):
@@ -3128,7 +3159,7 @@ class TwitchBot(irc.IRCClient, object):
 							else:
 								send_str = "%s has won the lottery and obtained %s point!" % (winner, self.lottery_point_value)
 							whisper_str = "You now have %s points in this channel." % point_balance(self, winner)
-							whisper(winner, whisper_str)
+							whisper(self, winner, whisper_str)
 						else:
 							send_str = "No one joined the lottery, there is no winner." 
 						set_status(self, self.lottery_display_id, False)
@@ -3136,14 +3167,14 @@ class TwitchBot(irc.IRCClient, object):
 						
 					else:
 						send_str = "Only mods can end lotteries." 
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 				else:
 					if has_level(self, user, channel_parsed, user_type, self.lottery_display_id):
 						send_str = "Usage: !lottery start/end <point value>"
 					else:
 						send_str = "Only mods can use !lottery commands"
-					whisper(user, send_str)
+					whisper(self, user, send_str)
 					return
 				self.write(send_str)
 			else:
@@ -3163,12 +3194,12 @@ class TwitchBot(irc.IRCClient, object):
 							send_str = "No lottery prize input, lottery started with prize of 0 points." 
 					else:
 						send_str = "Only mods can start lotteries." 
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 					self.write(send_str)
 				elif lottery_str == msg and has_level(self, user, channel_parsed, user_type, self.lottery_display_id):
 					send_str = "Usage: !lottery start/end <point value>" 
-					whisper(user, send_str)
+					whisper(self, user, send_str)
 					return
 				elif in_front(end_lottery_str, msg):
 					if has_level(self, user, channel_parsed, user_type, self.lottery_display_id):
@@ -3176,11 +3207,11 @@ class TwitchBot(irc.IRCClient, object):
 						self.write(send_str)	
 					else:
 						send_str = "Only mods can end lotteries." 
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 				else:
 					send_str = "Usage: !lottery start/end <point value>" 
-					whisper(user, send_str)
+					whisper(self, user, send_str)
 					return
 		else:
 			return False
@@ -3227,11 +3258,11 @@ class TwitchBot(irc.IRCClient, object):
 								send_str = "Roulette chance successfully changed to %s%%" % (input_perc)
 						else:
 							send_str = "Usage: !roulette chance <percent chance>" 
-							whisper(user, send_str)
+							whisper(self, user, send_str)
 							return
 					else:
 						send_str = "Only mods can change the chance of the roulette." 
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 					self.write(send_str)
 				else:
@@ -3239,7 +3270,7 @@ class TwitchBot(irc.IRCClient, object):
 						send_str = "Usage: !roulette chance <percent chance>" 
 					else:
 						send_str = "You don't have the correct permissions to use \"!lottery\" commands."
-					whisper(user, send_str)
+					whisper(self, user, send_str)
 					return
 			else:
 				return False
@@ -3262,7 +3293,7 @@ class TwitchBot(irc.IRCClient, object):
 					if has_level(self, user, channel_parsed, user_type, self.ball_display_id):
 						if len(msg_arr) > 2:#need to have this if statement more often
 							ball_response = msg_arr[2]
-							if not has_count(self, self.ball_display_id, ["responses"], [ball_response]):
+							if not has_count(self, self.ball_display_id, "responses", ball_response):
 								insert_data(self, self.ball_display_id, ["responses"], ball_response)
 								send_str = "\"%s\" added to list of 8ball responses." % (ball_response)
 							else:
@@ -3272,7 +3303,7 @@ class TwitchBot(irc.IRCClient, object):
 						self.write(send_str)
 					else:
 						send_str = "You don't have the correct permissions to use \"!8ball add\"."
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 					return
 				elif in_front(ball_del_str, msg) or in_front(ball_rem_str, msg):
 					if has_level(self, user, channel_parsed, user_type, self.ball_display_id):
@@ -3297,7 +3328,7 @@ class TwitchBot(irc.IRCClient, object):
 						self.write(send_str)
 					else:
 						send_str = "You don't have the correct permissions to use \"!8ball delete/remove\"."
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 					return
 				elif in_front(ball_list_str, msg):
 					if has_level(self, user, channel_parsed, user_type, self.ball_display_id):
@@ -3318,7 +3349,7 @@ class TwitchBot(irc.IRCClient, object):
 							self.write(send_str)
 					else:
 						send_str = "You don't have the correct permissions to use \"!8ball clear\"."
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 					return
 				elif ball_clr_str == msg:
 					if has_level(self, user, channel_parsed, user_type, self.ball_display_id): 
@@ -3327,16 +3358,16 @@ class TwitchBot(irc.IRCClient, object):
 						self.write(send_str)
 					else:
 						send_str = "You don't have the correct permissions to use \"!8ball clear\"."
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 					return
 				elif ball_str == msg:
 					if has_level(self, user, channel_parsed, user_type, self.ball_display_id):
 						send_str = "Usage: \"!8ball add/delete/remove/list/clear/<question>\"" 
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 					else:
 						send_str = "You don't have the correct permissions to use \"!8ball clear\"."
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 					return
 						
 				else:#so we don't respond when using the 8ball commands
@@ -3350,19 +3381,19 @@ class TwitchBot(irc.IRCClient, object):
 								send_str = "Magic 8 ball says... %s" % (response)
 							else:
 								send_str = "There are currently no 8ball responses." 
-								whisper(user, send_str)
+								whisper(self, user, send_str)
 								return
 						elif ball_str == msg:
 							send_str = "Get the Magic 8 Ball to answer your question. Usage: \"!8ball <question> \"."
-							whisper(user, send_str)
+							whisper(self, user, send_str)
 							return
 						else:
 							send_str = "Usage: \"!8ball <question>? \"." 
-							whisper(user, send_str)
+							whisper(self, user, send_str)
 							return
 					else:
 						send_str = "Usage: \"!8ball <question>? \"." 
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 					self.write(send_str)
 			else:
@@ -3386,7 +3417,7 @@ class TwitchBot(irc.IRCClient, object):
 			if get_status(self, self.uptime_display_id) and has_level(self, user, channel_parsed, user_type, self.uptime_display_id):
 				self.write(send_str)
 			else:
-				whisper(user, send_str)
+				whisper(self, user, send_str)
 		else:
 			return False
 	
@@ -3457,7 +3488,7 @@ class TwitchBot(irc.IRCClient, object):
 			if get_status(self, stat_str) and has_level(self, user, channel_parsed, user_type, stat_str):
 				self.write(send_str)
 			else:	
-				whisper(user, send_str)
+				whisper(self, user, send_str)
 		else:
 			return False
 	
@@ -3478,7 +3509,7 @@ class TwitchBot(irc.IRCClient, object):
 					else:
 						send_str = "%s is currently offline." % channel_parsed.capitalize()
 					if not has_level(self, user, channel_parsed, user_type, self.chanstats_display_id):
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 						
 				elif len(msg_arr) > 1:
@@ -3494,12 +3525,12 @@ class TwitchBot(irc.IRCClient, object):
 						send_str = "%s is not an active channel." % msg_arr[1].capitalize()
 				else:
 					send_str = "Usage: !chanstats <channel>"
-					whisper(user, send_str)
+					whisper(self, user, send_str)
 					return
 				if get_status(self, self.chanstats_display_id) and has_level(self, user, channel_parsed, user_type, self.chanstats_display_id):
 					self.write(send_str)
 				else:
-					whisper(user, send_str)
+					whisper(self, user, send_str)
 			else:
 				return False
 		else:
@@ -3533,7 +3564,7 @@ class TwitchBot(irc.IRCClient, object):
 			if get_status(self, self.subcribers_display_id) and has_level(self, user, channel_parsed, user_type, self.subcribers_display_id):
 				self.write(send_str)
 			else:	
-				whisper(user, send_str)
+				whisper(self, user, send_str)
 		else:
 			return False
 			
@@ -3558,17 +3589,17 @@ class TwitchBot(irc.IRCClient, object):
 						else:
 							#display usage
 							send_str = "Usage: !commercial <length of commercial>"
-							whisper(user, send_str)
+							whisper(self, user, send_str)
 							return
 					else:
 						#display usage
 						send_str = "Usage: !commercial <length of commercial>"
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 				else:
 					#not mod
 					send_str = "You don't have the correct permissions to start commercials." 
-					whisper(user, send_str)
+					whisper(self, user, send_str)
 					return
 				self.write(send_str)
 			else:
@@ -3620,11 +3651,11 @@ class TwitchBot(irc.IRCClient, object):
 								send_str = "No \".disconnect\" or \"/disconnect\" variants allowed."
 						else:
 							send_str = "Usage: !repeat add <command> <interval>" 
-							whisper(user, send_str)
+							whisper(self, user, send_str)
 							return
 					else:
 						send_str = "You don't have the correct permissions to use \"!repeat add\"." 
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 				elif in_front(repeat_del_str, msg) or in_front(repeat_rem_str, msg):
 					if has_level(self, user, channel_parsed, user_type, self.repeat_display_id):
@@ -3647,11 +3678,11 @@ class TwitchBot(irc.IRCClient, object):
 									send_str = "Specified repeat command does not exist." 
 						else:
 							send_str = "Usage: !repeat delete/remove <command/index>" 
-							whisper(user, send_str)
+							whisper(self, user, send_str)
 							return
 					else:
 						send_str = "You don't have the correct permissions to use \"!repeat delete/remove\"." 
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 				elif repeat_list_str == msg:
 					repeats_table = get_table(self, self.repeat_display_id)
@@ -3667,7 +3698,7 @@ class TwitchBot(irc.IRCClient, object):
 								#last element in arr
 								send_str += "(%s.) %s: %s." % (row_index+1, row["phrase"], parse_sec_condensed(row["interval"]))
 					if not has_level(self, user, channel_parsed, user_type, self.repeat_display_id):
-						whisper(user, send_str)		
+						whisper(self, user, send_str)		
 						return			
 				elif repeat_clr_str == msg:
 					if has_level(self, user, channel_parsed, user_type, self.repeat_display_id): 
@@ -3675,18 +3706,18 @@ class TwitchBot(irc.IRCClient, object):
 						send_str = "All repeat commands removed." 
 					else:
 						send_str = "You don't have the correct permissions to use \"!repeat clear\"." 
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 				elif repeat_str == msg:
 					send_str = "Add or remove commands to be repeated every specified interval. Syntax and more information can be found in the documentation." 
-					whisper(user, send_str)
+					whisper(self, user, send_str)
 					return
 				else:
 					if has_level(self, user, channel_parsed, user_type, self.repeat_display_id):
 						send_str = "Usage: !repeat add/delete/remove/list/clear <command> <interval>" 
 					else:
 						send_str = "Usage: !repeat list" 
-					whisper(user, send_str)
+					whisper(self, user, send_str)
 					return
 				self.write(send_str)
 				return
@@ -3717,8 +3748,8 @@ class TwitchBot(irc.IRCClient, object):
 									if cmd_phrase in self.default_cmd_arr:#dont add something that is already a default command
 										send_str = "%s is already a default command." % (cmd_phrase)
 									else:
-										cmd_pair = [cmd_phrase, cmd_reply]
-										if has_count(self, self.command_display_id, ["command", "reply"], cmd_pair):
+										query = text("SELECT COUNT(*) FROM `%s` WHERE `command` = :command AND `reply` = :reply" % (self.command_display_id))
+										if result_to_dict(self.conn.execute(query, command=cmd_phrase, reply=cmd_reply))[0]["COUNT(*)"] > 0:
 											send_str = "%s is already a custom command." % (cmd_phrase)
 										else:
 											if not disconnect_cmd(cmd_reply):
@@ -3730,21 +3761,21 @@ class TwitchBot(irc.IRCClient, object):
 								else:
 									#incorrectly formatted, display usage
 									send_str = "Usage: \"!command add !<command>:<reply>\"." 
-									whisper(user, send_str)
+									whisper(self, user, send_str)
 									return	
 							else:
 								#incorrectly formatted, display usage
 								send_str = "Usage: \"!command add !<command>:<reply>\"." 
-								whisper(user, send_str)
+								whisper(self, user, send_str)
 								return
 						else:
 							#incorrectly formatted, display usage
 							send_str = "Usage: \"!command add !<command>:<reply>\"."
-							whisper(user, send_str)
+							whisper(self, user, send_str)
 							return
 					else:
 						send_str = "You don't have the correct permissions to use \"!command add\"." 
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 				#delete commands
 				elif in_front(cmd_del_str, msg) or in_front(cmd_rem_str, msg):
@@ -3771,7 +3802,7 @@ class TwitchBot(irc.IRCClient, object):
 							send_str = "Usage: \"!command delete/remove <command/index>\"." 
 					else:
 						send_str = "You don't have the correct permissions to use \"!command delete/remove\"." 
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 				#list commands
 				elif cmd_list_str == msg:
@@ -3790,7 +3821,7 @@ class TwitchBot(irc.IRCClient, object):
 								send_str += "(%s.) %s: %s." % (row_index+1, row["command"], row["reply"])
 							
 					if not has_level(self, user, channel_parsed, user_type, self.command_display_id):
-						whisper(user, send_str)		
+						whisper(self, user, send_str)		
 						return
 				#clear commands
 				elif cmd_clr_str == msg:
@@ -3799,19 +3830,19 @@ class TwitchBot(irc.IRCClient, object):
 						send_str = "All custom commands removed." 
 					else:
 						send_str = "You don't have the correct permissions to use \"!command clear\"." 
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 				#just cmd string, display usage
 				elif cmd_str == msg:
 					send_str = "Add or remove custom commands. Syntax and more information can be found in the documentation." 
-					whisper(user, send_str)
+					whisper(self, user, send_str)
 					return
 				else:
 					if has_level(self, user, channel_parsed, user_type, self.command_display_id):
 						send_str = "Usage: !command add/delete/remove/list/clear" 
 					else:
 						send_str = "Usage: !command list." 
-					whisper(user, send_str)
+					whisper(self, user, send_str)
 					return
 				self.write(send_str)
 			else:	
@@ -3857,7 +3888,7 @@ class TwitchBot(irc.IRCClient, object):
 											reply = reply.replace("{*FOLLOWERS*}", str(follower_count))
 							else:
 								send_str = "You don't have the correct permissions to use custom commands." 
-								whisper(user, send_str)
+								whisper(self, user, send_str)
 								return
 							if in_front("/w", reply) or in_front(".w", reply):
 								whisper_response(reply)
@@ -3883,14 +3914,11 @@ class TwitchBot(irc.IRCClient, object):
 					word_count = get_word_count(word, channel_parsed)
 					minute = get_uptime_min(stats_channel)
 					word_per_min = round((word_count / minute), 2)
-					if stats_channel.endswith("s"):
-						stats_channel+="'"
-					else:
-						stats_channel+="'s"
+					stats_channel = possessive_prettify(stats_channel)
 					send_str = "Total times %s has been sent in this channel: %s. Per minute: %s." % (word, stats_channel, prettify_num(word_count), simplify_num(word_per_min))
 				else:
 					send_str = "This channel is currently offline."
-					whisper(user, send_str)
+					whisper(self, user, send_str)
 					return
 				
 			elif len(msg_arr) > 2:
@@ -3903,14 +3931,11 @@ class TwitchBot(irc.IRCClient, object):
 							word_count = get_word_count(word, channel_parsed)
 							minute = get_uptime_min(stats_channel)
 							word_per_min = round((word_count / minute), 2)
-							if stats_channel.endswith("s"):
-								stats_channel+="'"
-							else:
-								stats_channel+="'s"
+							stats_channel = possessive_prettify(stats_channel)
 							send_str = "Total times %s has been sent in this channel: %s. Per minute: %s." % (word, stats_channel, prettify_num(word_count), simplify_num(word_per_min))
 						else:
 							send_str = "This channel is currently offline."
-							whisper(user, send_str)
+							whisper(self, user, send_str)
 							return
 					else:
 						channel_data = get_json_stream(stats_channel)["streams"]
@@ -3918,26 +3943,23 @@ class TwitchBot(irc.IRCClient, object):
 							word_count = get_word_count(word, stats_channel)
 							minute = get_uptime_min(stats_channel)
 							word_per_min = round((word_count / minute), 2)
-							if stats_channel.endswith("s"):
-								stats_channel+="'"
-							else:
-								stats_channel+="'s"
+							stats_channel = possessive_prettify(stats_channel)
 							send_str = "Total times %s has been sent in %s channel: %s. Per minute: %s." % (word, stats_channel, prettify_num(word_count), simplify_num(word_per_min))
 						else:
 							send_str = "That channel is currently offline."
-							whisper(user, send_str)
+							whisper(self, user, send_str)
 							return
 				else:
 					word_count_global = get_word_count_global(word)
 					send_str = "Total times %s has been sent in all channels: %s." % (word, prettify_num(word_count_global))
 			else:
 				send_str = "Usage: !stats <channel>/global <word/phrase>" 
-				whisper(user, send_str)
+				whisper(self, user, send_str)
 				return
 			if get_status(self, self.stats_display_id) and has_level(self, user, channel_parsed, user_type, self.stats_display_id):
 				self.write(send_str)
 			else:
-				whisper(user, send_str)
+				whisper(self, user, send_str)
 			return
 		else:
 			return False
@@ -3952,7 +3974,7 @@ class TwitchBot(irc.IRCClient, object):
 			if get_status(self, self.stats_display_id) and has_level(self, user, channel_parsed, user_type, self.stats_display_id):
 				self.write("/mods")
 			else:
-				whisper(user, "/mods")
+				whisper(self, user, "/mods")
 			return
 			
 		else:
@@ -4044,7 +4066,7 @@ class TwitchBot(irc.IRCClient, object):
 					r = requests.put(url, data=data, headers=headers)
 				else:
 					send_str = "You have to be the streamer to change the channel title."
-					whisper(user, send_str)
+					whisper(self, user, send_str)
 			else:
 				title = result_to_dict(self.conn.execute("SELECT `title` FROM title LIMIT 1"))
 				if title:
@@ -4053,7 +4075,7 @@ class TwitchBot(irc.IRCClient, object):
 					if has_level(self, user, channel_parsed, user_type, display_id):
 						self.write(send_str)
 					else:
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 				else:	
 					channel_data = get_json_stream(channel_parsed)["streams"]
 					if channel_data:
@@ -4064,7 +4086,7 @@ class TwitchBot(irc.IRCClient, object):
 			if get_status(self, self.title_display_id) and has_level(self, user, channel_parsed, user_type, display_id):
 				self.write(send_str)
 			else:
-				whisper(user, send_str)
+				whisper(self, user, send_str)
 				return
 		else:
 			return False
@@ -4085,7 +4107,7 @@ class TwitchBot(irc.IRCClient, object):
 					r = requests.put(url, data=data, headers=headers)
 				else:
 					send_str = "You have to be the streamer to change the channel game"
-					whisper(user, send_str)
+					whisper(self, user, send_str)
 			else:
 				#gonna need to see what the output is from this and edit accordingly
 				game = result_to_dict(self.conn.execute("SELECT `game` FROM game LIMIT 1"))
@@ -4099,7 +4121,7 @@ class TwitchBot(irc.IRCClient, object):
 						self.write(send_str)
 						return
 					else:
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 				else:	
 					#get the new game and then print accordingly
@@ -4114,7 +4136,7 @@ class TwitchBot(irc.IRCClient, object):
 				self.write(send_str)
 				return
 			else:
-				whisper(user, send_str)
+				whisper(self, user, send_str)
 				return
 		else:
 			return False
@@ -4132,14 +4154,14 @@ class TwitchBot(irc.IRCClient, object):
 						self.write(send_str)
 					else:
 						send_str = "You don't have the correct permissions to change the channel topic"
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 				else:
 					topic = result_to_dict(self.conn.execute("SELECT `topic` FROM topic LIMIT 1"))
 					send_str = "The current topic is: \"%s\"" % topic
 				if has_level(self, user, channel_parsed, user_type, self.topic_display_id):
 					self.write(send_str)
 				else:
-					whisper(user, send_str)
+					whisper(self, user, send_str)
 			else:
 				return False
 		else:
@@ -4160,15 +4182,15 @@ class TwitchBot(irc.IRCClient, object):
 							return
 					elif len(msg_arr) == 1:
 						send_str = "Time the user out for a short duration, deleting their messages. Syntax and more information can be found in the documentation."
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 					else:
 						send_str = "Usage: !purge <user>"
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 				else:
 					send_str = "Only mods can use \"!purge\"."
-					whisper(user, send_str)
+					whisper(self, user, send_str)
 					return	
 				self.write(send_str)
 			else:
@@ -4184,14 +4206,14 @@ class TwitchBot(irc.IRCClient, object):
 				msg_arr = msg.split(" ")
 				if len(msg_arr) == 1:
 					send_str = "Usage: !math <equation>" 
-					whisper(user, send_str)
+					whisper(self, user, send_str)
 				elif len(msg_arr) > 1:
 					equation = msg_arr[1]
 					try:
 						send_str = str(eval(equation))
 					except:
 						send_str = "Unable to solve equation."
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 				self.write(send_str)
 			else:
@@ -4208,7 +4230,7 @@ class TwitchBot(irc.IRCClient, object):
 				msg_arr = msg.split(" ", 1)
 				if len(msg_arr) == 1:
 					send_str = "Usage: !roll <lower limit(default: 0)>, <upper limit>" 
-					whisper(user, send_str)
+					whisper(self, user, send_str)
 					return
 				elif len(msg_arr) > 1:
 					range_lims = msg_arr[1].split(",")
@@ -4217,12 +4239,12 @@ class TwitchBot(irc.IRCClient, object):
 						roll_upper_lim = range_lims[1]
 						if not is_num(roll_lower_lim) or not is_num(roll_upper_lim):
 							send_str = "!Usage: !roll <lower limit(default: 0)>, <upper limit>"
-							whisper(user, send_str)
+							whisper(self, user, send_str)
 							return
 					else:
 						if not is_num(msg_arr[1]):
 							send_str = "!Usage: !roll <lower limit(default: 0)>, <upper limit>"
-							whisper(user, send_str)
+							whisper(self, user, send_str)
 							return
 						if int(float(msg_arr[1])) < 0:
 							roll_lower_lim = msg_arr[1]
@@ -4236,7 +4258,7 @@ class TwitchBot(irc.IRCClient, object):
 					roll_num = random.randint(roll_lower_lim, roll_upper_lim)
 					send_str = "%s: %s" % (user, prettify_num(roll_num))
 					if not has_level(self, user, channel_parsed, user_type, self.roll_display_id):
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 				self.write(send_str)
 			else:
@@ -4254,7 +4276,7 @@ class TwitchBot(irc.IRCClient, object):
 				else:
 					send_str = "%s: Tails" % user
 				if not has_level(self, user, channel_parsed, user_type, self.coin_display_id):
-					whisper(user, send_str)
+					whisper(self, user, send_str)
 					return
 				self.write(send_str)
 			else:
@@ -4305,11 +4327,11 @@ class TwitchBot(irc.IRCClient, object):
 								send_str = "No \".disconnect\" or \"/disconnect\" variants allowed."
 						else:
 							send_str = "Usage: !countdown add <command> <expiration time/date>" 
-							whisper(user, send_str)
+							whisper(self, user, send_str)
 							return
 					else:
 						send_str = "You don't have the correct permissions to use \"!countdown add\"." 
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 				elif in_front(countdown_del_str, msg) or in_front(countdown_rem_str, msg):
 					if has_level(self, user, channel_parsed, user_type, self.countdown_display_id):
@@ -4331,11 +4353,11 @@ class TwitchBot(irc.IRCClient, object):
 									send_str = "Specified countdown command does not exist." 
 						else:
 							send_str = "Usage: !countdown delete/remove <command/index>" 
-							whisper(user, send_str)
+							whisper(self, user, send_str)
 							return
 					else:
 						send_str = "You don't have the correct permissions to use \"!countdown delete/remove\"." 
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 				elif countdown_list_str == msg:
 					countdown_table = get_table(self, self.countdown_display_id)
@@ -4352,7 +4374,7 @@ class TwitchBot(irc.IRCClient, object):
 								send_str += "(%s.) %s: %s." % (row_index+1, row["command"], row["duration"])
 								
 					if not has_level(self, user, channel_parsed, user_type, self.countdown_display_id):
-						whisper(user, send_str)		
+						whisper(self, user, send_str)		
 						return			
 				elif countdown_clr_str == msg:
 					if has_level(self, user, channel_parsed, user_type, self.countdown_display_id): 
@@ -4360,18 +4382,18 @@ class TwitchBot(irc.IRCClient, object):
 						send_str = "All countdown commands removed." 
 					else:
 						send_str = "You don't have the correct permissions to use \"!countdown clear\"." 
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 				elif countdown_str == msg:
 					send_str = "Add or remove commands to be executed at the end of a specified time. Syntax and more information can be found in the documentation." 
-					whisper(user, send_str)
+					whisper(self, user, send_str)
 					return
 				else:
 					if has_level(self, user, channel_parsed, user_type, self.countdown_display_id):
 						send_str = "Usage: !countdown add/delete/remove/list/clear <command> <expiration time>" 
 					else:
 						send_str = "Usage: !countdown list" 
-					whisper(user, send_str)
+					whisper(self, user, send_str)
 					return
 				self.write(send_str)
 				return
@@ -4418,13 +4440,13 @@ class TwitchBot(irc.IRCClient, object):
 							send_str = "%s, you do not have any points in this channel" % user
 					else:
 						send_str = "!Usage: !points <user>"
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 						
 					self.write(send_str)
 				else:
 					send_str = "You don't have the correct permissions to use \"!points\"."
-					whisper(user, send_str)
+					whisper(self, user, send_str)
 					return
 			else:
 				return False
@@ -4513,10 +4535,10 @@ class TwitchBot(irc.IRCClient, object):
 					point_change(self, user, slot_point_value)
 					self.write(send_str)
 					send_str = "You now have %s points in this channel." % point_balance(self, user)
-					whisper(user, send_str)
+					whisper(self, user, send_str)
 				else:
 					send_str = "You don't have the correct permissions to use \"!slots\"."
-					whisper(user, send_str)
+					whisper(self, user, send_str)
 					return
 			else:
 				return False
@@ -4548,34 +4570,34 @@ class TwitchBot(irc.IRCClient, object):
 									else:
 										if give_amount != 1:
 											send_str = "You have given %s %s points." % (give_user, give_amount)
-											whisper(user, send_str)
+											whisper(self, user, send_str)
 											send_str = "%s has given you %s points." % (user, give_amount)
-											whisper(give_user, send_str)
+											whisper(self, give_user, send_str)
 										else:
 											send_str = "You have given %s %s point." % (give_user, give_amount)
-											whisper(user, send_str)
+											whisper(self, user, send_str)
 											send_str = "%s has given you %s point." % (user, give_amount)
-											whisper(give_user, send_str)
+											whisper(self, give_user, send_str)
 										return
 								else:
 									send_str = "You cannot give more points than you have." 
-									whisper(user, send_str)
+									whisper(self, user, send_str)
 									return
 							else:
 								send_str = "You cannot give negative points." 
-								whisper(user, send_str)
+								whisper(self, user, send_str)
 								return
 						else:
 							send_str = "You cannot give more points than you currently have." 
-							whisper(user, send_str)
+							whisper(self, user, send_str)
 							return
 					else:
 						send_str = "Usage: !give <user> <point amount> "
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 				else:
 					send_str = "Usage: !give <user> <point amount>"
-					whisper(user, send_str)
+					whisper(self, user, send_str)
 					return
 				self.write(send_str)
 			else:
@@ -4610,11 +4632,11 @@ class TwitchBot(irc.IRCClient, object):
 						else:
 							#incorrectly formatted, display usage
 							send_str = "Usage: \"!editors add <editor>\"." 
-							whisper(user, send_str)
+							whisper(self, user, send_str)
 							return
 					else:
 						send_str = "You don't have the correct permissions to use \"!editors add\"." 
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 				#delete editors
 				elif in_front(editors_del_str, msg) or in_front(editors_rem_str, msg):
@@ -4639,11 +4661,11 @@ class TwitchBot(irc.IRCClient, object):
 						else:
 							#incorrectly formatted, display usage
 							send_str = "Usage: \"!editors delete/remove <editor>\"." 
-							whisper(user, send_str)
+							whisper(self, user, send_str)
 							return
 					else:
 						send_str = "You don't have the correct permissions to use \"!editors delete/remove\"." 
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 				#list editor
 				elif editors_list_str == msg:
@@ -4661,7 +4683,7 @@ class TwitchBot(irc.IRCClient, object):
 								#last element in arr
 								send_str += "(%s.) %s." % (row_index+1, row["user"])
 					if not has_level(self, user, channel_parsed, user_type, self.editors_display_id):
-						whisper(user, send_str)		
+						whisper(self, user, send_str)		
 						return			
 				#clear editors
 				elif in_front(editors_clr_str, msg):
@@ -4670,7 +4692,7 @@ class TwitchBot(irc.IRCClient, object):
 						send_str = "All editors removed." 
 					else:
 						send_str = "You don't have the correct permissions to use \"!editors clear\"." 
-						whisper(user, send_str)
+						whisper(self, user, send_str)
 						return
 				#just editor string, display usage
 				elif in_front(editors_str, msg):
@@ -4678,16 +4700,18 @@ class TwitchBot(irc.IRCClient, object):
 						send_str = "Promote or demote users to and from the editor level. Syntax and more information can be found in the documentation." 
 					else:
 						send_str = "You don't have the correct permissions to use !editors commands." 
-					whisper(user, send_str)
+					whisper(self, user, send_str)
 					return
 				else:
 					if has_level(self, user, channel_parsed, user_type, self.editors_display_id): 
 						send_str = "Usage: !editors add/delete/remove/list/clear" 
 					else:
 						send_str = "You don't have the correct permissions to use !editors commands." 
-					whisper(user, send_str)
+					whisper(self, user, send_str)
 					return
 				self.write(send_str)
+			else:
+				return False
 		else:
 			return False
 	
@@ -4697,26 +4721,41 @@ class TwitchBot(irc.IRCClient, object):
 		if get_status(self, "level"):
 			if in_front(level_str, msg):
 				if has_level(self, user, channel_parsed, user_type, self.level_display_id):
-					msg_arr = msg.split(" ", 2)
-					if len(msg_arr) > 2:
-						feature = msg_arr[1]
-						level = msg_arr[2]
-						if "!" in feature[:1]:
-							feature = feature[1:]
-						if feature == "subs":
-							feature = self.subcribers_display_id#this way we don't have to make a new row and stuff just for this.
-						if has_count(self, "main", "display_id", feature):
-							query = text("UPDATE main SET feature_level = %d WHERE display_id = :feature" % level)
-							self.conn.execute(query, feature=feature)
+					msg_arr = msg.split(" ", 1)
+					if len(msg_arr) > 1:
+						feature_arr = msg_arr[1:][0]
+						if is_num(feature_arr[-1]):#if last element in the array is a number then assign the feature to everything before it and assign the level to the number
+							feature = feature_arr[:-1].strip()
+							level = int(feature_arr[-1])
+							if "!" in feature[:1]:
+								feature = feature[1:]
+							if feature == "subs":
+								feature = self.subcribers_display_id#this way we don't have to make a new row and stuff just for this.
+							elif feature == "mods":
+								feature = self.moderators_display_id#same ^^^
+							if has_count(self, "main", "display_id", feature):
+								query = text("SELECT COUNT(*) FROM main WHERE display_id = :feature AND feature_level = %d" % level)
+								if result_to_dict(self.conn.execute(query, feature=feature))[0]["COUNT(*)"] > 0:
+									feature = possessive_prettify(feature)
+									send_str = "%s level requirement is already set to %d." % (feature.capitalize(), level)
+								else:
+									query = text("UPDATE main SET feature_level = %d WHERE display_id = :feature" % level)
+									self.conn.execute(query, feature=feature)
+									feature = possessive_prettify(feature)
+									send_str = "%s level requirement set to %d." % (feature.capitalize(), level)
+									self.write(send_str)
+									return
+							else:
+								send_str = "%s is not a feature." % feature
+								whisper(self, user, send_str)
+								return
 						else:
-							send_str = "%s is not a feature." % feature
-							whisper(user, send_str)
-							return
+							send_str = "Usage: !level <feature> <level>"
 					else:
-						send_str = "Usage: !level <level> <feature>"
+						send_str = "Usage: !level <feature> <level>"
 				else:
 					send_str = "You don't have the correct permissions to use \"!level\"."
-				whisper(user, send_str)
+				whisper(self, user, send_str)
 				return
 			else:
 				return False
@@ -4863,6 +4902,12 @@ class TwitchBot(irc.IRCClient, object):
 		
 		if self.give_parse(user, msg, self.channel_parsed, user_type) != False:
 			return
+		
+		if self.editors_parse(user, msg, self.channel_parsed, user_type) != False:
+			return
+			
+		if self.level_parse(user, msg, self.channel_parsed, user_type) != False:
+			return
 			
 	def signedOn(self):
 		logging.warning("Signed on as {}".format(self.nickname))
@@ -4970,11 +5015,15 @@ class TwitchBot(irc.IRCClient, object):
 		if args[0] == self.channel and "The moderators of this room are:" in args[1]:
 			args[1] += ", and %s." % self.channel.replace("#", "")
 			self.write(args[1])
+			self.mods_msg = args[1]
 
 	def write(self, msg):
 		'''Send message to channel and log it'''
-		self.msg(self.channel, msg.encode("utf-8"))
-		logging.info("{}: {}".format(self.nickname, msg))
+		if "/mods" in msg:
+			thread.start_new_thread(get_mods_msg, (self, msg))
+		else:	
+			self.msg(self.channel, msg.encode("utf-8"))
+			logging.info("{}: {}".format(self.nickname, msg))
 		
 class BotFactory(protocol.ClientFactory, object):
 	wait_time = 1
@@ -5013,6 +5062,7 @@ class TwitchWhisperBot(irc.IRCClient, object):
 			create_database(self.nickname)
 		engine = create_engine("mysql://root@localhost:3306/%s" % self.nickname)
 		self.conn = engine.connect()
+		self.mods_msg = ''
 		
 		check_loop = LoopingCall(self.whisper_check)
 		check_loop.start(0.003)
@@ -5023,7 +5073,7 @@ class TwitchWhisperBot(irc.IRCClient, object):
 		test_reply = "Test successful."
 		
 		if msg == "!test":
-			whisper(user, test_reply)
+			whisper(self, user, test_reply)
 		else:
 			return False
 	
@@ -5049,7 +5099,7 @@ class TwitchWhisperBot(irc.IRCClient, object):
 					send_str = "Usage: \"!8ball <question>? \"." 
 			else:
 				send_str = "Usage: \"!8ball <question>? \"." 
-			whisper(user, send_str)
+			whisper(self, user, send_str)
 		else:
 			return False
 
@@ -5066,7 +5116,7 @@ class TwitchWhisperBot(irc.IRCClient, object):
 					send_str = "%s is not an active channel." % msg_arr[1]
 			else:
 				send_str = "Usage: \"!uptime <channel>\""
-			whisper(user, send_str)
+			whisper(self, user, send_str)
 		else:
 			return False
 	
@@ -5113,7 +5163,7 @@ class TwitchWhisperBot(irc.IRCClient, object):
 			else:
 				send_str = "Usage: \"%s <channel>\"" % find_stat_str
 				
-			whisper(user, send_str)
+			whisper(self, user, send_str)
 		else:
 			return False
 		
@@ -5134,7 +5184,7 @@ class TwitchWhisperBot(irc.IRCClient, object):
 					send_str = "%s is not an active channel." % msg_arr[1].capitalize()
 			else:
 				send_str = "Usage: !chanstats <channel>"
-			whisper(user, send_str)
+			whisper(self, user, send_str)
 		else:
 			return False
 		
@@ -5162,7 +5212,7 @@ class TwitchWhisperBot(irc.IRCClient, object):
 			if has_level(self, user, channel_parsed, user_type, self.subcribers_display_id):
 				self.write(send_str)
 			else:	
-				whisper(user, send_str)
+				whisper(self, user, send_str)
 		else:
 			return False
 	
@@ -5180,10 +5230,7 @@ class TwitchWhisperBot(irc.IRCClient, object):
 					if channel_data:
 						minute = get_uptime_min(stats_channel)
 						word_per_min = round((word_count / minute), 2)
-						if stats_channel.endswith("s"):
-							stats_channel+="'"
-						else:
-							stats_channel+="'s"
+						stats_channel = possessive_prettify(stats_channel)
 						send_str = "Total times %s has been sent in %s channel: %s. Per minute: %s." % (word, stats_channel, prettify_num(word_count), simplify_num(word_per_min))
 					else:
 						send_str = "That channel is currently offline."
@@ -5192,9 +5239,9 @@ class TwitchWhisperBot(irc.IRCClient, object):
 					send_str = "Total times %s has been sent in all channels: %s." % (word, prettify_num(word_count_global))
 			else:
 				send_str = "Usage: !stats <channel> <word>" 
-				whisper(user, send_str)
+				whisper(self, user, send_str)
 				return
-			whisper(user, send_str)
+			whisper(self, user, send_str)
 			return
 		else:
 			return False
@@ -5337,9 +5384,8 @@ class TwitchWhisperBot(irc.IRCClient, object):
 		if "msg-id" not in tags:
 			return
 		logging.warning(tags['msg-id'])
-
-	def write(self, msg):
 		'''Send message to channel and log it'''
+		
 		self.msg(self.channel, msg.encode("utf-8"))
 		logging.info("{}: {}".format(self.nickname, msg))
 		
