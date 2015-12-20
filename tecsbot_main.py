@@ -130,7 +130,7 @@ test all the new shit
 '''
 '''
 errors:
-
+	
 When internet fails
 Traceback (most recent call last):
   File "C:\Python27\Scripts\tecsbot\tecsbot_main.py", line 169, in <module>
@@ -187,7 +187,7 @@ ping_nick = "@%s" % nickname
 #the group chat channel, do we need to automatically get this?
 
 
-f = open("C:\\Python27\\Scripts\\bot_oauth.log", "r")
+f = open("/home/darkelement/programming/tecsbot/bot_oauth.log", "r")
 password = f.readlines()[0].rstrip()#removing hard coded oauth for streaming
 
 #things to be input as settings
@@ -220,7 +220,7 @@ permit_time = 30 #seconds
 cmd_match_full = True
 
 #initial connect
-f = open("C:\\Python27\\Scripts\\bot_oauth.log", "r")
+f = open("/home/darkelement/programming/tecsbot/bot_oauth.log", "r")
 access_token = f.readlines()[1]
 client_id = "jpf2a90oon0wqdnno5ygircwgomt9rz"
 
@@ -550,23 +550,25 @@ def is_num(x):
 	except AttributeError:
 		return False
 		
-def set_value(self, display_id, set_feature, msg_arr):
+def set_value(self, display_id, msg_arr):
 	status = get_status(self, display_id)
+	if display_id != self.set_display_id and not get_status(self, self.set_display_id):
+		return
 	if msg_arr[2] == "on":
 		if status:
-			send_str = "%s is already on." % (set_feature.capitalize())
+			send_str = "%s is already on." % (display_id.capitalize())
 		else:
 			set_status(self, display_id, True)
-			send_str = "%s turned on. You can do \"!set %s off\" to turn it off again." % (set_feature.capitalize(), set_feature)
+			send_str = "%s turned on. You can do \"!set %s off\" to turn it off again." % (display_id.capitalize(), display_id)
 	elif msg_arr[2] == "off":
 		if not status:
-			send_str = "%s is already off." % (set_feature.capitalize())
+			send_str = "%s is already off." % (display_id.capitalize())
 		else:
 			set_status(self, display_id, False)
-			send_str = "%s turned off. You can do \"!set %s on\" to turn it on again." % (set_feature.capitalize(), set_feature)
+			send_str = "%s turned off. You can do \"!set %s on\" to turn it on again." % (display_id.capitalize(), display_id)
 	else:
 		#usage
-		send_str = "Usage: \"!set %s on/off \"." % (set_feature)
+		send_str = "Usage: \"!set %s on/off \"." % (display_id)
 	self.write(send_str)
 
 def caps_count(msg):
@@ -729,17 +731,27 @@ def get_whisper_mods_msg(self, user, msg):
 	while True:
 		if self.mods_msg != '':
 			msg = msg.replace("/mods", self.mods_msg)
-			whisper(self, user, msg)
+			send_whisper(self, user, msg)
 			self.mods_msg = ''
 			return
-			
+
+def send_whisper(self, user, msg):
+	whisper_str = "/w %s %s" % (user, msg)
+	print dir(whisper_bot)
+	print dir(whisper_bot.transport)
+	whisper_bot.write("asdf")
+
 def whisper(self, user, msg):
-	global whisper_user, whisper_msg
+	'''global whisper_user, whisper_msg
 	if "/mods" in msg:
 		thread.start_new_thread(get_whisper_mods_msg, (self, user, msg))
 	else:
 		whisper_user = user
-		whisper_msg = msg
+		whisper_msg = msg'''
+	if "/mods" in msg:
+		thread.start_new_thread(get_whisper_mods_msg, (self, user, msg))
+	else:
+		send_whisper(self, user, msg)
 	
 def whisper_response(msg):
 	#edit this when it's time for variables
@@ -942,7 +954,7 @@ def set_status(self, feature, status):
 		query = text("UPDATE main SET feature_status = 1 where display_id = :feature")
 	else:
 		query = text("UPDATE main SET feature_status = 0 where display_id = :feature")
-	self.conn.execute(query)
+	self.conn.execute(query, feature=feature)
 		
 def insert_data(self, table, columns, values):
 	#values is a string
@@ -2345,7 +2357,7 @@ class TwitchBot(irc.IRCClient, object):
 										send_str = "%s is already an autoreply phrase." % (ar_pair[0])
 									else:
 										if not disconnect_cmd(ar_reply):
-											query = text("INSERT INTO `autoreplies` (`phrase`, `reply`) VALUES (:phrase, :reply)")
+											query = text("INSERT INTO `%s` (`phrase`, `reply`) VALUES (:phrase, :reply)" % (self.autoreply_display_id))
 											self.conn.execute(query, phrase=ar_phrase, reply=ar_reply)
 											send_str = "Phrase \"%s\" added, with reply \"%s\"." % (ar_phrase, ar_reply)
 										else:
@@ -2532,160 +2544,162 @@ class TwitchBot(irc.IRCClient, object):
 		set_rol_chance_str = "!roulette chance"
 		
 		if in_front(set_str, msg):
-			if get_status(self, self.set_display_id):
-				if has_level(self, user, channel_parsed, user_type, self.set_display_id):
-					msg_arr = msg.split(" ")
-					if len(msg_arr) == 3:
+			if has_level(self, user, channel_parsed, user_type, self.set_display_id):
+				msg_arr = msg.split(" ")
+				if len(msg_arr) == 3:
+					
+					#turn roulette on or off
+					if in_front(set_roulette_str, msg):
+						set_value(self, self.roulette_display_id, msg_arr)
 						
-						#turn roulette on or off
-						if in_front(set_roulette_str, msg):
-							set_value(self, self.roulette_display_id, msg_arr)
-							
-						#turn 8ball on or off
-						elif in_front(set_ball_str, msg):
-							set_value(self, self.ball_display_id, msg_arr)
-							
-						#banphrases
-						elif in_front(set_banphrase_str, msg):
-							set_value(self, self.banphrase_display_id, msg_arr)
+					#turn 8ball on or off
+					elif in_front(set_ball_str, msg):
+						set_value(self, self.ball_display_id, msg_arr)
 						
-						#autoreplies
-						elif in_front(set_autoreply_str, msg):
-							set_value(self, self.autoreply_display_id, msg_arr)
-							
-						#antispam
-						elif in_front(set_antispam_str, msg):
-							set_value(self, self.antispam_display_id, msg_arr)
-							
-						#repeat
-						elif in_front(set_repeat_str, msg):
-							set_value(self, self.repeat_display_id, msg_arr)
+					#banphrases
+					elif in_front(set_banphrase_str, msg):
+						set_value(self, self.banphrase_display_id, msg_arr)
+					
+					#autoreplies
+					elif in_front(set_autoreply_str, msg):
+						set_value(self, self.autoreply_display_id, msg_arr)
 						
-						#roll
-						elif in_front(set_roll_str, msg):
-							set_value(self, self.roll_display_id, msg_arr)
+					#antispam
+					elif in_front(set_antispam_str, msg):
+						set_value(self, self.antispam_display_id, msg_arr)
 						
-						#math
-						elif in_front(set_math_str, msg):
-							set_value(self, self.math_display_id, msg_arr)
-							
-						#coin
-						elif in_front(set_coin_str, msg):
-							set_value(self, self.coin_display_id, msg_arr)
+					#repeat
+					elif in_front(set_repeat_str, msg):
+						set_value(self, self.repeat_display_id, msg_arr)
+					
+					#roll
+					elif in_front(set_roll_str, msg):
+						set_value(self, self.roll_display_id, msg_arr)
+					
+					#math
+					elif in_front(set_math_str, msg):
+						set_value(self, self.math_display_id, msg_arr)
 						
-						#countdown
-						elif in_front(set_countdown_str, msg):
-							set_value(self, self.countdown_display_id, msg_arr)
-							
-						#topic
-						elif in_front(set_topic_str, msg):
-							set_value(self, self.topic_display_id, msg_arr)
+					#coin
+					elif in_front(set_coin_str, msg):
+						set_value(self, self.coin_display_id, msg_arr)
+					
+					#countdown
+					elif in_front(set_countdown_str, msg):
+						set_value(self, self.countdown_display_id, msg_arr)
 						
-						#views
-						elif in_front(set_views_str, msg):
-							set_value(self, self.views_display_id, msg_arr)	
-						
-						#viewers
-						elif in_front(set_viewers_str, msg):
-							set_value(self, self.viewers_display_id, msg_arr)
-						
-						#chatters
-						elif in_front(set_chatters_str, msg):
-							set_value(self, self.chatters_display_id, msg_arr)
-						
-						#followers
-						elif in_front(set_followers_str, msg):
-							set_value(self, self.followers_display_id, msg_arr)
-						
-						#stats
-						elif in_front(set_stats_str, msg):
-							self.stats_on = set_value(self, self.stats_on, self.stats_display_id, msg_arr)
-							
-						else:
-							send_str = "Usage: \"!set <feature> on/off \"." 
-							whisper(self, user, send_str)
-							return
-					elif len(msg_arr) == 4:
-						#repeat antispam
-						if in_front(set_repeat_antispam_str, msg):
-							set_value(self, self.repeat_antispam_display_id, msg_arr)
-							
-						#emote antispam
-						elif in_front(set_emote_antispam_str, msg):
-							set_value(self, self.emote_antispam_display_id, msg_arr)
-							
-						#caps antispam
-						elif in_front(set_caps_antispam_str, msg):
-							set_value(self, self.caps_antispam_display_id, msg_arr)
-						
-						#skincode antispam
-						elif in_front(set_skincode_antispam_str, msg):
-							set_value(self, self.skincode_antispam_display_id, msg_arr)
-						
-						#symbol antispam
-						elif in_front(set_symbol_antispam_str, msg):
-							set_value(self, self.symbol_antispam_display_id, msg_arr)
-						
-						#link antispam
-						elif in_front(set_link_antispam_str, msg):
-							set_value(self, self.link_antispam_display_id, msg_arr)
-						
-						#me antispam
-						elif in_front(set_me_antispam_str, msg):
-							set_value(self, self.me_antispam_display_id, msg_arr)
-						
-						#spam permits
-						elif in_front(set_spam_permits_str, msg):
-							set_value(self, self.permit_display_id, msg_arr)
-							
-						#ip antispam
-						elif in_front(set_ip_antispam_str, msg):
-							set_value(self, self.ip_antispam_display_id, msg_arr)
-						
-						else:
-							send_str = "Usage: \"!set <feature> on/off \"." 
-							whisper(self, user, send_str)
-							return		
-						#ban emotes
-						'''elif in_front(set_ban_emotes_str, msg):
-							self.ban_emotes_on = set_value(self, self.ban_emotes_on, "ban emotes", msg_arr)
-						
-						'''	
-						
-					elif len(msg_arr) == 5:
-						#fake purge antispam
-						if in_front(set_fake_purge_antispam_str, msg):
-							set_value(self, self.fake_purge_antispam_display_id, msg_arr)
-						
-						#long message antispam
-						elif in_front(set_long_msg_antispam_str, msg):
-							set_value(self, self.long_message_antispam_display_id, msg_arr)
-						
-						#long word antispam
-						elif in_front(set_long_word_antispam_str, msg):
-							set_value(self, self.long_word_antispam_display_id, msg_arr)
-						
-						else:
-							send_str = "Usage: \"!set <feature> on/off \"." 
-							whisper(self, user, send_str)
-							return	
+					#topic
+					elif in_front(set_topic_str, msg):
+						set_value(self, self.topic_display_id, msg_arr)
+					
+					#views
+					elif in_front(set_views_str, msg):
+						set_value(self, self.views_display_id, msg_arr)	
+					
+					#viewers
+					elif in_front(set_viewers_str, msg):
+						set_value(self, self.viewers_display_id, msg_arr)
+					
+					#chatters
+					elif in_front(set_chatters_str, msg):
+						set_value(self, self.chatters_display_id, msg_arr)
+					
+					#followers
+					elif in_front(set_followers_str, msg):
+						set_value(self, self.followers_display_id, msg_arr)
+					
+					#stats
+					elif in_front(set_stats_str, msg):
+						set_value(self, self.stats_display_id, msg_arr)
+					
+					#set
+					elif in_front(set_set_str, msg):
+						set_value(self, self.set_display_id, msg_arr)	
+
 					else:
-						#usage
 						send_str = "Usage: \"!set <feature> on/off \"." 
 						whisper(self, user, send_str)
 						return
-					#just set_str, explain usage.
-					if set_str == msg:
-						send_str = "Turn features on or off. Usage: \"!set <feature> on/off \"." 
+				elif len(msg_arr) == 4:
+					#repeat antispam
+					if in_front(set_repeat_antispam_str, msg):
+						set_value(self, self.repeat_antispam_display_id, msg_arr)
+						
+					#emote antispam
+					elif in_front(set_emote_antispam_str, msg):
+						set_value(self, self.emote_antispam_display_id, msg_arr)
+						
+					#caps antispam
+					elif in_front(set_caps_antispam_str, msg):
+						set_value(self, self.caps_antispam_display_id, msg_arr)
+					
+					#skincode antispam
+					elif in_front(set_skincode_antispam_str, msg):
+						set_value(self, self.skincode_antispam_display_id, msg_arr)
+					
+					#symbol antispam
+					elif in_front(set_symbol_antispam_str, msg):
+						set_value(self, self.symbol_antispam_display_id, msg_arr)
+					
+					#link antispam
+					elif in_front(set_link_antispam_str, msg):
+						set_value(self, self.link_antispam_display_id, msg_arr)
+					
+					#me antispam
+					elif in_front(set_me_antispam_str, msg):
+						set_value(self, self.me_antispam_display_id, msg_arr)
+					
+					#spam permits
+					elif in_front(set_spam_permits_str, msg):
+						set_value(self, self.permit_display_id, msg_arr)
+						
+					#ip antispam
+					elif in_front(set_ip_antispam_str, msg):
+						set_value(self, self.ip_antispam_display_id, msg_arr)
+					
+					else:
+						send_str = "Usage: \"!set <feature> on/off \"." 
 						whisper(self, user, send_str)
-						return
+						return		
+					#ban emotes
+					'''elif in_front(set_ban_emotes_str, msg):
+						self.ban_emotes_on = set_value(self, self.ban_emotes_on, "ban emotes", msg_arr)
+					
+					'''	
+					
+				elif len(msg_arr) == 5:
+					#fake purge antispam
+					if in_front(set_fake_purge_antispam_str, msg):
+						set_value(self, self.fake_purge_antispam_display_id, msg_arr)
+					
+					#long message antispam
+					elif in_front(set_long_msg_antispam_str, msg):
+						set_value(self, self.long_message_antispam_display_id, msg_arr)
+					
+					#long word antispam
+					elif in_front(set_long_word_antispam_str, msg):
+						set_value(self, self.long_word_antispam_display_id, msg_arr)
+					
+					else:
+						send_str = "Usage: \"!set <feature> on/off \"." 
+						whisper(self, user, send_str)
+						return	
 				else:
-					#not mod
-					send_str = "You don't have the correct permissions to use !set commands." 
+					#usage
+					send_str = "Usage: \"!set <feature> on/off \"." 
+					whisper(self, user, send_str)
+					return
+				#just set_str, explain usage.
+				if set_str == msg:
+					send_str = "Turn features on or off. Usage: \"!set <feature> on/off \"." 
 					whisper(self, user, send_str)
 					return
 			else:
-				return False
+				#not mod
+				send_str = "You don't have the correct permissions to use !set commands." 
+				whisper(self, user, send_str)
+				return
+			
 		else:
 			return False
 	
@@ -2732,7 +2746,7 @@ class TwitchBot(irc.IRCClient, object):
 										set_status(self, self.poll_display_id, True)
 										send_str = "Poll opened! To vote use !vote <option/index>." 
 										for vote_option_index, vote_option in enumerate(vote_option_arr): 
-											query = text("INSERT INTO `votes` (`option`, `votes`, `users`) VALUES (:option, 0, [])")
+											query = text("INSERT INTO `%s` (`option`, `votes`, `users`) VALUES (:option, 0, [])" % self.poll_display_id)
 											self.conn.execute(query, option=vote_option.strip())
 										self.write(send_str)
 										
@@ -2775,7 +2789,7 @@ class TwitchBot(irc.IRCClient, object):
 						return
 				elif in_front(poll_reset_str, msg):
 					if has_level(self, user, channel_parsed, user_type, self.poll_display_id):
-						query = text("UPDATE votes SET votes = 0, users = '[]'")
+						query = text("UPDATE `%s` SET votes = 0, users = '[]'" % self.poll_display_id)
 						self.conn.execute(query)
 						send_str = "Votes reset."
 						self.write(send_str)
@@ -2850,9 +2864,9 @@ class TwitchBot(irc.IRCClient, object):
 							vote_users = json.loads(votes_table[row_index]["users"])
 							vote_users.remove(user)
 							vote_users = repr(json.dumps(vote_users))
-							query = text("UPDATE votes SET users = :users WHERE `index` = :index")
+							query = text("UPDATE `%s` SET users = :users WHERE `index` = :index" % self.poll_display_id)
 							self.conn.execute(query, users=vote_users, index=votes_table[row_index]["index"])
-							query = text("UPDATE votes SET votes = votes-1 WHERE `index` = :index")
+							query = text("UPDATE `%s` SET votes = votes-1 WHERE `index` = :index" % self.poll_display_id)
 							self.conn.execute(query, index=row["index"])
 							vote_total -=1
 							send_str = "Vote removed."
@@ -2925,25 +2939,25 @@ class TwitchBot(irc.IRCClient, object):
 								#do nothing if they are already in it, if not then find add them and remove them from the one they used to be in
 								#convert row["users"] to list here again
 								if user not in row["users"]:
-									query = text("UPDATE votes SET votes = votes+1 WHERE `index` = :index")
+									query = text("UPDATE `%s` SET votes = votes+1 WHERE `index` = :index" % self.poll_display_id)
 									self.conn.execute(query, index=row["index"])
 									vote_users = json.loads(votes_table[row_index]["users"])
 									vote_users.append(user)
 									vote_users = repr(json.dumps(vote_users))
-									query = text("UPDATE votes SET users = :users WHERE `index` = :index")
-									self.conn.execute(query, users=vote_users, index=votes_table[row_index]["index"])
+									query = text("UPDATE `%s` SET users = :users WHERE `index` = :index")
+									self.conn.execute(query, users=vote_users, index=votes_table[row_index]["index"] % self.poll_display_id)
 									vote_total+=1
 									#if it's not the option they want and they are in it then remove them
 									for old_row_index, old_row in enumerate(votes_table):
 										#convert the users to list
 										if old_row["option"] != msg_arr[1] and user in old_row["users"]:
-											query = text("UPDATE votes SET votes = votes-1 WHERE `index` = %s")
+											query = text("UPDATE `%s` SET votes = votes-1 WHERE `index` = %s" % self.poll_display_id)
 											self.conn.execute(query, index=old_row["index"])
 											vote_total-=1
 											vote_users = json.loads(votes_table[old_row_index]["users"])
 											vote_users.remove(user)
 											vote_users = repr(json.dumps(vote_users))
-											query = text("UPDATE votes SET users = :users WHERE `index` = :index")
+											query = text("UPDATE `%s` SET users = :users WHERE `index` = :index" % self.poll_display_id)
 											self.conn.execute(query, users=vote_users, index=votes_table[old_row_index]["index"])
 											send_str = "Vote changed."
 											whisper(self, user, send_str)
@@ -2972,12 +2986,12 @@ class TwitchBot(irc.IRCClient, object):
 								if vote_choice_index == row_index+1:
 									#convert to list
 									if user not in row["users"]:
-										query = text("UPDATE votes SET votes = votes+1 WHERE `index` = :index")
+										query = text("UPDATE `%s` SET votes = votes+1 WHERE `index` = :index" % self.poll_display_id)
 										self.conn.execute(query, index=row["index"])
 										vote_users = json.loads(votes_table[row_index]["users"])
 										vote_users.append(user)
 										vote_users = repr(json.dumps(vote_users))
-										query = text("UPDATE votes SET users = :users WHERE `index` = :index")
+										query = text("UPDATE `%s` SET users = :users WHERE `index` = :index" % self.poll_display_id)
 										self.conn.execute(query, users=vote_users, index=votes_table[row_index]["index"])
 										vote_total+=1
 										#if it's not the option they want and they are in it then remove them
@@ -2987,9 +3001,9 @@ class TwitchBot(irc.IRCClient, object):
 												vote_users = json.loads(votes_table[row_index]["users"])
 												vote_users.remove(user)
 												vote_users = repr(json.dumps(vote_users))
-												query = text("UPDATE votes SET users = :users WHERE `index` = :index")
+												query = text("UPDATE `%s` SET users = :users WHERE `index` = :index" % self.poll_display_id)
 												self.conn.execute(query, users=vote_users, index=votes_table[old_row_index]["index"])
-												query = text("UPDATE votes SET votes = votes-1 WHERE `index` = :index")
+												query = text("UPDATE `%s` SET votes = votes-1 WHERE `index` = :index" % self.poll_display_id)
 												self.conn.execute(query, index=row["index"])
 												send_str = "Vote changed."
 												vote_total-=1
@@ -5064,8 +5078,8 @@ class TwitchWhisperBot(irc.IRCClient, object):
 		self.conn = engine.connect()
 		self.mods_msg = ''
 		
-		check_loop = LoopingCall(self.whisper_check)
-		check_loop.start(0.003)
+		#check_loop = LoopingCall(self.whisper_check)
+		#check_loop.start(0.003)
 	
 	def test_parse(self, user, msg):
 		#test
@@ -5389,11 +5403,18 @@ class TwitchWhisperBot(irc.IRCClient, object):
 		self.msg(self.channel, msg.encode("utf-8"))
 		logging.info("{}: {}".format(self.nickname, msg))
 		
+	def write(self, msg):
+		self.msg(self.channel, msg.encode("utf-8"))
+		logging.info("{}: {}".format(self.nickname, msg))
+
 class WhisperBotFactory(protocol.ClientFactory, object):
 	wait_time = 1
 
 	def __init__(self, channel):
+		global whisper_bot
+
 		self.channel = channel
+		whisper_bot = TwitchWhisperBot(self.channel)
 
 	def buildProtocol(self, addr):
 		return TwitchWhisperBot(self.channel)
@@ -5432,6 +5453,7 @@ logging.basicConfig(format="[%(asctime)s] %(message)s",
 
 # Connect to Twitch IRC server, make more instances for more connections
 #Whisper connection
+whisper_bot = ''
 reactor.connectTCP(server, port, WhisperBotFactory(whisper_channel))
 
 #Channel connections
