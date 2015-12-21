@@ -4,6 +4,8 @@
 #TECSBot, Twitch Emote Chat Statistics Bot
 #Made by DarkElement75, AKA Blake Edwards
 """
+Don't forget:
+sudo systemctl restart httpd, mysqld
 SEPERATE IDEAS
 20 bot network controlled by one main bot
 	could be used to paste 1/20th of a copypasta at a time
@@ -77,16 +79,6 @@ allow streamer to choose what to let mods do?<--- could work with level system
 analytics for messages and emotes and shiznizzle(think past me meant in the gui)
 1 second between requests is recommended
 replace as many api requests as possible
-#######################################
-time for level system:
-	streamer has all control, GUI settings as well as everything else
-	editor level = all settings other than gui
-	moderator = can they start things but not edit, or can they do neither?
-!level command-
-	!level <feature> <level>
-		!level autoreply 1 - makes it so that only the streamer can edit autoreplies
-		!level !slap 4 - makes it so that everyone can use the slap command
-#######################################
 !clever <user> to troll user
 How to get bot in channel:
 	1. User goes to website and gives oauth, so that we know it's them
@@ -103,7 +95,6 @@ http://deepbot.deep.sg/wiki/Bot+Commands
 	use more try except/catch 
 oauth_on variable?
 !time to print current time
-need to either figure out a way to whisper the /mods response or implement this when there is a new way to get the mods of a room
 remember to update the default command list, the README, and the sets
 whisper mods list or whispers argument where mods can choose to have bot's responses whispered to them instead of printed
 default starting amount of points, make changeable just like all the others?
@@ -111,18 +102,17 @@ default starting amount of points, make changeable just like all the others?
 	1. Song requests - website for streamer to use that bot is hooked up to, use the gui
 	2. Database setting storage
 	3. website and gui for the bot 
-dont let it time out mods unless it can send messages on behalf of streamer
 make link whitelist also look for false positives? i.e. dot com
+dont let it time out mods unless it can send messages on behalf of streamer
 	a. Allows settings input
 	b. Has connect with twitch button first
 input time out duration for banphrases?
-current_time = time.time() will not get fractions of a second, it will only get whole seconds
+current_time = time.time() will not get fractions of a second, it will only get whole seconds < this leads to it be ing off by a second, is a problem needs to be fixed
 	for now I don't want to implement this because why would you care so much about those fractions of a second
 	maybe we will make it loop every second in the future instead of 0.003, i dont fucking know i just know i dont want to 
 	do it right now
 add a general spam prevention like r9k
 what do we need to rename emote_warn to / we still need this function
-test all the new shit
 """
 '''misc
  function loadEmotes() { $.getJSON("https://api.betterttv.net/emotes").done(function(data) { $emotes.text(''); parseEmotes(data.emotes); }).fail(function() { $('#emote').text("Error loading emotes.."); }); }
@@ -718,7 +708,7 @@ def check_int(num):
 	return num
 
 def get_mods_msg(self, msg):
-	self.write("/mods")
+	#self.write("/mods")
 	while True:
 		if self.mods_msg != '':
 			msg = msg.replace("/mods", self.mods_msg)
@@ -727,19 +717,19 @@ def get_mods_msg(self, msg):
 			return
 			
 def get_whisper_mods_msg(self, user, msg):
+	self.whisper_mods_thread = True # so that we don't print it when the mods_msg is obtained in the notice function
 	self.write("/mods")
 	while True:
 		if self.mods_msg != '':
 			msg = msg.replace("/mods", self.mods_msg)
 			send_whisper(self, user, msg)
 			self.mods_msg = ''
+			self.whisper_mods_thread = False
 			return
 
 def send_whisper(self, user, msg):
 	whisper_str = "/w %s %s" % (user, msg)
-	print dir(whisper_bot)
-	print dir(whisper_bot.transport)
-	whisper_bot.write("asdf")
+	reactor.whisper_bot.write(whisper_str)
 
 def whisper(self, user, msg):
 	'''global whisper_user, whisper_msg
@@ -885,7 +875,7 @@ def encode_list(list):
 def point_change(self, user, points):
 	#if points != 0:#don't waste our time if it's 0 points#we actually remove this so that we tell them their new total of points and this may interfere with a custom setting
 	if get_status(self, self.points_display_id):
-		query = ("SELECT COUNT(*) FROM point_users WHERE user = :user")
+		query = text("SELECT COUNT(*) FROM point_users WHERE user = :user")
 		res = result_to_dict(self.conn.execute(query, user=user))[0]["COUNT(*)"]
 		if res <= 0:
 			query = text("INSERT INTO `point_users` (`user`, `points`) VALUES (:user, 0)")
@@ -918,15 +908,15 @@ def get_len_table(self, table):
 	return len_table
 
 def get_sum(self, table, column):
-	query = text("SELECT SUM(:column) FROM `%s`" % table)
-	res = int(result_to_dict(self.conn.execute(query, column, table))[0]["SUM(`%s`)"%column])
+	query = text("SELECT SUM(`%s`) FROM `%s`" % (column, table))
+	res = int(result_to_dict(self.conn.execute(query))[0]["SUM(`%s`)"%column])
 	return res
 	
 def get_count(self, table, columns, values):
 	columns = "(" + ','.join(x for x in columns) + ")"
 	values = '(' + repr(values)[1:-1] + ')'
 	query = text("SELECT COUNT(*) FROM `%s` WHERE :columns = :values" % table)
-	return result_to_dict(self.conn.execute(query, table=table, columns=columns, values=values))[0]["COUNT(*)"]
+	return result_to_dict(self.conn.execute(query, columns=columns, values=values))[0]["COUNT(*)"]
 		
 def has_count(self, table, column, value):
 	#same as get_count but returns a bool instead of an int
@@ -984,8 +974,8 @@ def extend_data(self, table, column, values):
 	for index, value in enumerate(values):
 		values[index] = "(%s)" % repr(value)
 	values = ', '.join(x for x in values)
-	query = text("INSERT INTO `%s` (:column) VALUES :values" % table) 
-	self.conn.execute(query, column=column, values=values)
+	query = text("INSERT INTO `%s` (`%s`) VALUES %s" % (table, column, values)) 
+	self.conn.execute(query)
 ##def update_8ball_table(self, type, 
 
 def delete_index_handler(self, table, index):
@@ -1287,7 +1277,7 @@ CREATE DATABASE IF NOT EXISTS `%s`;
 	CREATE TABLE IF NOT EXISTS `point_users` (
 	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 	  `user` varchar(500) DEFAULT NULL,
-	  `points` varchar(500) DEFAULT NULL,
+	  `points` double DEFAULT NULL,
 	  PRIMARY KEY (`index`)
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
@@ -1519,7 +1509,8 @@ class TwitchBot(irc.IRCClient, object):
 		#perhaps we should make this vvv a table
 		self.default_cmd_arr = ['!link whitelist', '!permit', '!banphrase', '!autoreply', '!set', '!vote', '!raffle', '!roulette', '!8ball', '!uptime', '!chatters', '!viewers', '!subs', '!subscribers', '!commercial', '!ban emote', '!repeat', '!title', '!topic', '!game', '!purge', '!math', '!roll', '!coin', '!countdown']
 		self.mods_msg = ''
-		
+		self.whisper_mods_thread = False
+
 		#For the channel stats
 		self.follower_arr = []
 		self.viewer_arr = []
@@ -2746,7 +2737,7 @@ class TwitchBot(irc.IRCClient, object):
 										set_status(self, self.poll_display_id, True)
 										send_str = "Poll opened! To vote use !vote <option/index>." 
 										for vote_option_index, vote_option in enumerate(vote_option_arr): 
-											query = text("INSERT INTO `%s` (`option`, `votes`, `users`) VALUES (:option, 0, [])" % self.poll_display_id)
+											query = text("INSERT INTO `%s` (`option`, `votes`, `users`) VALUES (:option, 0, '[]')" % self.poll_display_id)
 											self.conn.execute(query, option=vote_option.strip())
 										self.write(send_str)
 										
@@ -2861,11 +2852,12 @@ class TwitchBot(irc.IRCClient, object):
 					vote_total = get_sum(self, self.poll_display_id, "votes")
 					for row_index, row in enumerate(votes_table):
 						if user in row["users"]:
-							vote_users = json.loads(votes_table[row_index]["users"])
+							vote_users = json.loads(row["users"])
 							vote_users.remove(user)
-							vote_users = repr(json.dumps(vote_users))
+							vote_users = json.dumps(vote_users)
+							#vote_users = votes_table[row_index]["users"].replace(user, '')
 							query = text("UPDATE `%s` SET users = :users WHERE `index` = :index" % self.poll_display_id)
-							self.conn.execute(query, users=vote_users, index=votes_table[row_index]["index"])
+							self.conn.execute(query, users=vote_users, index=row["index"])
 							query = text("UPDATE `%s` SET votes = votes-1 WHERE `index` = :index" % self.poll_display_id)
 							self.conn.execute(query, index=row["index"])
 							vote_total -=1
@@ -2887,8 +2879,8 @@ class TwitchBot(irc.IRCClient, object):
 							if vote_total != 0:
 								poll_winner = [['', 0]]
 								for row in enumerate(votes_table):
-									key = row["option"]
-									value = row["votes"]
+									key = row[1]["option"]
+									value = row[1]["votes"]
 									option_perc = round(float(value)/vote_total * 100, 2)
 									option_perc = simplify_num(option_perc)
 									if value == poll_winner[0][1]:
@@ -2919,9 +2911,9 @@ class TwitchBot(irc.IRCClient, object):
 												send_str += " and %s. They each had %s%% of the total vote and %s votes." % (poll_winner[vote_option][0], winner_perc, poll_winner[0][1])
 								else:
 									send_str = "No poll winner, this shouldn't happen. Contact me if it does. value_dict: %s, poll_winners: %s" % (value_dict, poll_winner)
-								clear_table(self, self.poll_display_id)	
 							else:
 								send_str = "Poll closed with no votes." 
+							clear_table(self, self.poll_display_id)	
 						else:
 							send_str = "There are no ongoing polls."
 					else:
@@ -2929,7 +2921,7 @@ class TwitchBot(irc.IRCClient, object):
 						whisper(self, user, send_str)
 						return
 				else:
-					if has_count(self, self.poll_display_id, "`option`", msg_arr[1].strip()):
+					if has_count(self, self.poll_display_id, "option", msg_arr[1].strip()):
 						votes_table = get_table(self, self.poll_display_id)
 						vote_total = get_sum(self, self.poll_display_id, "votes")
 						#msg_arr[1] is a vote option
@@ -2941,22 +2933,22 @@ class TwitchBot(irc.IRCClient, object):
 								if user not in row["users"]:
 									query = text("UPDATE `%s` SET votes = votes+1 WHERE `index` = :index" % self.poll_display_id)
 									self.conn.execute(query, index=row["index"])
-									vote_users = json.loads(votes_table[row_index]["users"])
+									vote_users = json.loads(row["users"])
 									vote_users.append(user)
-									vote_users = repr(json.dumps(vote_users))
-									query = text("UPDATE `%s` SET users = :users WHERE `index` = :index")
-									self.conn.execute(query, users=vote_users, index=votes_table[row_index]["index"] % self.poll_display_id)
+									vote_users = json.dumps(vote_users)
+									query = text("UPDATE `%s` SET users = :users WHERE `index` = :index" % self.poll_display_id)
+									self.conn.execute(query, users=vote_users, index=votes_table[row_index]["index"])
 									vote_total+=1
 									#if it's not the option they want and they are in it then remove them
 									for old_row_index, old_row in enumerate(votes_table):
 										#convert the users to list
 										if old_row["option"] != msg_arr[1] and user in old_row["users"]:
-											query = text("UPDATE `%s` SET votes = votes-1 WHERE `index` = %s" % self.poll_display_id)
+											query = text("UPDATE `%s` SET votes = votes-1 WHERE `index` = :index" % self.poll_display_id)
 											self.conn.execute(query, index=old_row["index"])
 											vote_total-=1
 											vote_users = json.loads(votes_table[old_row_index]["users"])
 											vote_users.remove(user)
-											vote_users = repr(json.dumps(vote_users))
+											vote_users = json.dumps(vote_users)
 											query = text("UPDATE `%s` SET users = :users WHERE `index` = :index" % self.poll_display_id)
 											self.conn.execute(query, users=vote_users, index=votes_table[old_row_index]["index"])
 											send_str = "Vote changed."
@@ -3162,8 +3154,8 @@ class TwitchBot(irc.IRCClient, object):
 					if has_level(self, user, channel_parsed, user_type, self.lottery_display_id):
 						chatters_json = get_json_chatters(channel_parsed)
 						#if chatters_json[self.chatters_display_id]["viewers"]:#should be run in an existing channel so this should always be true
-						extend_data(self, self.lottery_display_id, "`user`", chatters_json["chatters"]["viewers"])
-						extend_data(self, self.lottery_display_id, "`user`", chatters_json["chatters"]["moderators"])
+						extend_data(self, self.lottery_display_id, "user", chatters_json["chatters"]["viewers"])
+						extend_data(self, self.lottery_display_id, "user", chatters_json["chatters"]["moderators"])
 						lottery_table = get_table(self, self.lottery_display_id)
 						if len(lottery_table) > 0:
 							winner = lottery_table[random.randint(0, (len(lottery_table) - 1))]["user"].encode("utf-8")
@@ -3241,7 +3233,8 @@ class TwitchBot(irc.IRCClient, object):
 			if in_front(rol_str, msg):
 				if rol_str == msg:
 					#trigger roulette - allow custom messages for win/loss to replace default ones
-					send_str = "/me places the revolver to %s's head" % (user)
+					possessive_user = possessive_prettify(user)
+					send_str = "/me places the revolver to %s head" % (possessive_user)
 					self.write(send_str)
 					time.sleep(1)
 					if random.random() < self.rol_chance:
@@ -3250,7 +3243,7 @@ class TwitchBot(irc.IRCClient, object):
 							timeout(user, self, self.rol_timeout)
 							send_str = "The trigger is pulled, and the revolver fires! %s lies dead in chat" % (user)
 						else:
-							send_str = "The gun jams thanks to your super mod powers. %s lives!" % (user)
+							send_str = "The gun jams thanks to %s super mod powers. %s lives!" % (possessive_user, user)
 					else:
 						#do nothing, notify of victory
 						send_str = "The trigger is pulled, and the revolver clicks. %s has lived to survive roulette!" % (user)
@@ -3360,7 +3353,8 @@ class TwitchBot(irc.IRCClient, object):
 							self.write(send_str)
 						else:
 							send_str = "There are currently no 8ball responses." 
-							self.write(send_str)
+							whisper(self, user, send_str)
+							return
 					else:
 						send_str = "You don't have the correct permissions to use \"!8ball clear\"."
 						whisper(self, user, send_str)
@@ -3421,7 +3415,12 @@ class TwitchBot(irc.IRCClient, object):
 		if in_front(uptime_str, msg):
 			msg_arr = msg.split(" ")
 			if len(msg_arr) == 1:
-				send_str = "@%s has been live for: %s" % (self.channel_parsed, get_uptime_str(self.channel_parsed))
+				uptime = get_uptime_str(self.channel_parsed)
+				if uptime:
+					send_str = "@%s has been live for: %s" % (self.channel_parsed, uptime)
+				else:
+					send_str = "@%s is currently offline." % self.channel_parsed
+
 			elif len(msg_arr) > 1:
 				uptime = get_uptime_str(msg_arr[1])
 				if uptime:
@@ -3658,7 +3657,7 @@ class TwitchBot(irc.IRCClient, object):
 								current_time = time.time()
 								#repeat_set = [current_time, repeat_cmd, repeat_interval]
 								#add the new set to the database
-								query = text("INSERT INTO `repeats` (`set_time`, `phrase`, `interval`) VALUES (:time, :command, :interval)")
+								query = text("INSERT INTO `%s` (`set_time`, `phrase`, `interval`) VALUES (:time, :command, :interval)" % self.repeat_display_id)
 								self.conn.execute(query, time=current_time, command=repeat_cmd, interval=repeat_interval)
 								send_str = "Repeat command \"%s\" added with interval %s." % (repeat_cmd, parse_sec_condensed(repeat_interval))
 							else:
@@ -3767,7 +3766,7 @@ class TwitchBot(irc.IRCClient, object):
 											send_str = "%s is already a custom command." % (cmd_phrase)
 										else:
 											if not disconnect_cmd(cmd_reply):
-												query = text("INSERT INTO `commands` (`command`, `reply`) VALUES (:phrase, :reply)")
+												query = text("INSERT INTO `%s` (`command`, `reply`) VALUES (:phrase, :reply)" % self.command_display_id)
 												self.conn.execute(query, phrase=cmd_phrase, reply=cmd_reply)
 												send_str = "Command \"%s\" added, with reply \"%s\"." % (cmd_phrase, cmd_reply)
 											else:
@@ -3806,7 +3805,7 @@ class TwitchBot(irc.IRCClient, object):
 									send_str = "Invalid index for command removal." 
 							
 							else:
-								delete_status = delete_value_handler(self, self.repeat_display_id, "phrase", repeat_cmd)
+								delete_status = delete_value_handler(self, self.command_display_id, "command", cmd_phrase)
 								if delete_status:
 									send_str = "Command %s:%s removed." % (delete_status["command"], delete_status["reply"])	
 								else:
@@ -3983,9 +3982,7 @@ class TwitchBot(irc.IRCClient, object):
 		moderators_str = "!moderators"
 		
 		if in_front(mods_str, msg) or in_front(moderators_str, msg):
-			
-			
-			if get_status(self, self.stats_display_id) and has_level(self, user, channel_parsed, user_type, self.stats_display_id):
+			if get_status(self, self.moderators_display_id) and has_level(self, user, channel_parsed, user_type, self.moderators_display_id):
 				self.write("/mods")
 			else:
 				whisper(self, user, "/mods")
@@ -4334,7 +4331,7 @@ class TwitchBot(irc.IRCClient, object):
 							if not disconnect_cmd(countdown_cmd):
 								current_time = time.time()
 								#countdown_set = [current_time, countdown_cmd, countdown_time]
-								query = text("INSERT INTO `countdowns` (`set_time`, `command`, `duration`) VALUES (:time, :command, :expiration)")
+								query = text("INSERT INTO `%s` (`set_time`, `command`, `duration`) VALUES (:time, :command, :expiration)" % self.countdown_display_id)
 								self.conn.execute(query, time=current_time, command=countdown_cmd, expiration=countdown_time)
 								send_str = "Countdown command \"%s\" added with expiration time %s." % (countdown_cmd, parse_sec_condensed(countdown_time))
 							else:
@@ -4379,13 +4376,13 @@ class TwitchBot(irc.IRCClient, object):
 						send_str = "No active countdown commands." 
 					else:
 						send_str = "Active countdown commands: " 
-						for row_index, row in enmuerate(countdown_table):
+						for row_index, row in enumerate(countdown_table):
 							if (row_index != len(countdown_table)-1):
 								#every element but last one
-								send_str += "(%s.) %s: %s, " % (row_index+1, row["command"], row["duration"])
+								send_str += "(%s.) %s: %s, " % (row_index+1, row["command"], parse_sec_condensed(row["duration"]))
 							else:
 								#last element in arr
-								send_str += "(%s.) %s: %s." % (row_index+1, row["command"], row["duration"])
+								send_str += "(%s.) %s: %s." % (row_index+1, row["command"], parse_sec_condensed(row["duration"]))
 								
 					if not has_level(self, user, channel_parsed, user_type, self.countdown_display_id):
 						whisper(self, user, send_str)		
@@ -4576,7 +4573,7 @@ class TwitchBot(irc.IRCClient, object):
 								if user_point_bal - give_amount >= 0:
 									point_change(self, user, give_amount*-1)
 									point_change(self, give_user, give_amount)
-									if has_level(self, user, channel_parsed, user_type, self.gives_display_id):
+									if has_level(self, user, channel_parsed, user_type, self.give_display_id):
 										if give_amount != 1:
 											send_str = "%s has given %s %s points." % (user, give_user, give_amount)
 										else:
@@ -4669,7 +4666,7 @@ class TwitchBot(irc.IRCClient, object):
 							else:
 								delete_status = delete_value_handler(self, self.editors_display_id, "user", editor)
 								if delete_status:		
-									send_str = "Editor %s removed." % (delete_status["phrase"])	
+									send_str = "Editor %s removed." % (delete_status["user"])	
 								else:
 									send_str = "Specified user is not an editor." 
 						else:
@@ -5028,13 +5025,19 @@ class TwitchBot(irc.IRCClient, object):
 		#for /mods response
 		if args[0] == self.channel and "The moderators of this room are:" in args[1]:
 			args[1] += ", and %s." % self.channel.replace("#", "")
-			self.write(args[1])
+			#self.write(args[1])
+			self.mods_msg = args[1]
+		elif args[0] == self.channel and "There are no moderators of this room." in args[1]:
+			#self.write(args[1])
 			self.mods_msg = args[1]
 
 	def write(self, msg):
 		'''Send message to channel and log it'''
 		if "/mods" in msg:
-			thread.start_new_thread(get_mods_msg, (self, msg))
+			self.msg(self.channel, "/mods")
+			if not self.whisper_mods_thread:#if we aren't looking for the msg for the get whisper mods msg function
+				thread.start_new_thread(get_mods_msg, (self, msg))
+
 		else:	
 			self.msg(self.channel, msg.encode("utf-8"))
 			logging.info("{}: {}".format(self.nickname, msg))
@@ -5069,7 +5072,7 @@ class TwitchWhisperBot(irc.IRCClient, object):
 		self.nickname = nickname
 		self.password = password
 		self.channel_parsed = self.channel.replace("#", "")
-		
+		reactor.whisper_bot = self
 		#Database
 		#create database here with the .sql file if it doesn't already exist
 		if not database_exists(self.nickname):	
@@ -5310,6 +5313,9 @@ class TwitchWhisperBot(irc.IRCClient, object):
 		whisper_user = ""
 			
 	def signedOn(self):
+		#for the whisper function
+		reactor.whisper_bot = self
+
 		logging.warning("Signed on as {}".format(self.nickname))
 
 		# Set IRC caps for Twitch and join channel
@@ -5414,7 +5420,6 @@ class WhisperBotFactory(protocol.ClientFactory, object):
 		global whisper_bot
 
 		self.channel = channel
-		whisper_bot = TwitchWhisperBot(self.channel)
 
 	def buildProtocol(self, addr):
 		return TwitchWhisperBot(self.channel)
@@ -5453,7 +5458,6 @@ logging.basicConfig(format="[%(asctime)s] %(message)s",
 
 # Connect to Twitch IRC server, make more instances for more connections
 #Whisper connection
-whisper_bot = ''
 reactor.connectTCP(server, port, WhisperBotFactory(whisper_channel))
 
 #Channel connections
