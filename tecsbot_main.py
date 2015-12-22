@@ -65,17 +65,7 @@ need to have command to check if user is subscribed to channel
 just a note: better to try and open file and catch exception than to check if isfile
 the bad file descriptor is apparently related to the self. variables<--so you know why it's happening if it does happen again
 make it so capitalization doesnt matter on several things(i.e. autoreply) option?
-make an option to let bot respond to it's own replies to autoreplies? Would this be for all of them? i.e. countdown, repeat, autoreply as well, etrc
-use round() wherever needed
-use enumerate wherever needed
-point system for watching stream/chatting/etc
-	more points -> greater chance to win prizes/raffles/etcidk
-	when points added or subtracted then do point_change(self, point_num, user)
-		add user to self.user_points_arr if not in it already
-	we should do this as a dictionary actually
-	
 !x delete 21, 1, 5 <--- multiple deleting possibility
-allow streamer to choose what to let mods do?<--- could work with level system
 analytics for messages and emotes and shiznizzle(think past me meant in the gui)
 1 second between requests is recommended
 replace as many api requests as possible
@@ -86,16 +76,13 @@ How to get bot in channel:
 	3. bot joins, and if modded is good and oauth is good, then all is well and it is added to list of connections
 https://apis.rtainc.co/twitchbot/status?user=Darkelement75 custom api link
 	http://deepbot.tv/wiki/Custom+Commands
-argument for mod requirement custom commands autoreplies
-	perhaps we should only have this in gui, users can make the command they just made(which they could just make in the gui) be a mod or non mod command
-	allow it to be input for custom and autoreply commands
 execute commands with streamer capabilities
 http://deepbot.deep.sg/wiki/Bot+Commands
 @customapi@[api link] where customapi is a variable that represents the data on the api link, ie how nightbot has uptime api link
-	use more try except/catch 
+use more try except/catch 
 oauth_on variable?
 !time to print current time
-remember to update the default command list, the README, and the sets
+remember to update the default command list, the README, the sets, and the db
 whisper mods list or whispers argument where mods can choose to have bot's responses whispered to them instead of printed
 default starting amount of points, make changeable just like all the others?
 3 main things:
@@ -467,31 +454,22 @@ def is_editor(self, user):
 def has_level(self, user, channel_parsed, user_type, display_id):
 	query = text("SELECT feature_level FROM main WHERE `display_id` = :display_id LIMIT 1")
 	level = result_to_dict(self.conn.execute(query, display_id=display_id))[0]["feature_level"]
-	if level == 1:
-		#the streamer
-		if is_streamer(user, channel_parsed):
-			return True
-		else:
-			return False
-	elif level == 2:
-		#editors and the streamer
-		if is_streamer(user, channel_parsed) or is_editor(self, user):
-			return True
-		else:
-			return False
-	elif level == 3:
-		#moderators, editors, and the streamer
-		if is_streamer(user, channel_parsed) or is_editor(self, user) or is_mod(user, channel_parsed, user_type):
-			return True
-		else:
-			return False
-	elif level == 4:
-		#anyone
+	user_level = get_user_level(self, user, channel_parsed, user_type)
+	if user_level <= level:
 		return True
 	else:
-		#no level input/invalid level input. Shouldnt happen.
 		return False
-		
+
+def get_user_level(self, user, channel_parsed, user_type):
+	if is_streamer(user, channel_parsed):
+		return 1
+	elif is_editor(self, user):
+		return 2
+	elif is_mod(user, channel_parsed, user_type):
+		return 3
+	else:
+		return 4
+
 def is_streamer(user, channel_parsed):
 	if user == channel_parsed:
 		return True
@@ -692,8 +670,11 @@ def symbol_count(msg):
 			msg_symbol_count += 1
 	return msg_symbol_count		
 
+def normalize_caseless(str):
+	return unicodedata.normalize("NFKD", str.casefold())
+
 def in_front(str, msg):
-	if str in msg[:len(str)+1]:
+	if normalize_caseless(str) in normalize_caseless(msg[:len(str)+1]):
 		return True
 	else:
 		return False
@@ -1063,6 +1044,7 @@ CREATE DATABASE IF NOT EXISTS `%s`;
 	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 	  `phrase` varchar(500) DEFAULT NULL,
 	  `reply` varchar(500) DEFAULT NULL,
+	  `level` TINYINT(4) NULL DEFAULT NULL,
 	  PRIMARY KEY (`index`)
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
@@ -1098,13 +1080,14 @@ CREATE DATABASE IF NOT EXISTS `%s`;
 	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 	  `command` varchar(500) DEFAULT NULL,
 	  `reply` varchar(500) DEFAULT NULL,
+	  `level` TINYINT(4) NULL DEFAULT NULL,
 	  PRIMARY KEY (`index`)
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
-	INSERT INTO `command` (`command`, `reply`) VALUES
-		("!slap", "{*USER*} slaps {*TO_USER*} around a bit with a large trout."),
-		("!shoutout", "Check out twitch.tv/{*TO_USER*} and follow them!"),
-		("!test", "Test successful.");
+	INSERT INTO `command` (`command`, `reply`, `level`) VALUES
+		("!slap", "{*USER*} slaps {*TO_USER*} around a bit with a large trout.", 3),
+		("!shoutout", "Check out twitch.tv/{*TO_USER*} and follow them!", 1),
+		("!test", "Test successful.", 2);
 		
 	CREATE TABLE IF NOT EXISTS `countdown` (
 	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
@@ -1248,7 +1231,9 @@ CREATE DATABASE IF NOT EXISTS `%s`;
 		(45, 'game', 1, 4),
 		(46, 'topic', 1, 4),
 		(47, 'moderators', 1, 4),
-		(48, 'level', 1, 2);
+		(48, 'level', 1, 2),
+		(49, 'loops', 0, 2);
+
 	CREATE TABLE IF NOT EXISTS `me_warn` (
 	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 	  `set_time` double NOT NULL,
@@ -1469,7 +1454,8 @@ class TwitchBot(irc.IRCClient, object):
 		self.subcribers_display_id = "subscribers"
 		self.moderators_display_id = "moderators"
 		self.level_display_id = "level"
-		
+		self.loops_display_id = "loops"
+
 		#Raffle and Lottery
 		self.raffle_point_value = 0
 		self.lottery_point_value = 0
@@ -2343,16 +2329,45 @@ class TwitchBot(irc.IRCClient, object):
 								if len(ar_msg_arr) == 2:
 									ar_phrase = ar_msg_arr[0].rstrip().lstrip()
 									ar_reply = ar_msg_arr[1].rstrip().lstrip()
-									query = text("SELECT COUNT(*) FROM `%s` WHERE `phrase` = :phrase AND `reply` = :reply" % (self.autoreply_display_id))
-									if result_to_dict(self.conn.execute(query, phrase=ar_phrase, reply=ar_reply))[0]["COUNT(*)"] > 0:
-										send_str = "%s is already an autoreply phrase." % (ar_pair[0])
+									if is_num(ar_reply[-1:]):
+										ar_level = ar_reply[-1:]#get level
+										ar_reply = ar_reply[:-1]#everything but last letter
 									else:
-										if not disconnect_cmd(ar_reply):
-											query = text("INSERT INTO `%s` (`phrase`, `reply`) VALUES (:phrase, :reply)" % (self.autoreply_display_id))
-											self.conn.execute(query, phrase=ar_phrase, reply=ar_reply)
-											send_str = "Phrase \"%s\" added, with reply \"%s\"." % (ar_phrase, ar_reply)
+										ar_level = False
+
+									if ar_level:
+										if not check_int(ar_level):
+											send_str = "Level requirement must be an integer." 
+											whisper(self, user, send_str)
+											return	
 										else:
-											send_str = "No \".disconnect\" or \"/disconnect\" variants allowed."
+											#valid level input
+											ar_level = int(ar_level)
+											if ar_level < 1 or ar_level > 4:
+												send_str = "Level requirement must be between 1 and 4." 
+												whisper(self, user, send_str)
+												return	
+											query = text("SELECT COUNT(*) FROM `%s` WHERE `phrase` = :phrase AND `reply` = :reply" % (self.autoreply_display_id))
+											if result_to_dict(self.conn.execute(query, phrase=ar_phrase, reply=ar_reply))[0]["COUNT(*)"] > 0:
+												send_str = "%s is already an autoreply phrase." % (ar_pair[0])
+											else:
+												if not disconnect_cmd(ar_reply):
+													query = text("INSERT INTO `%s` (`phrase`, `reply`, `level`) VALUES (:phrase, :reply, %d)" % (self.autoreply_display_id, ar_level))
+													self.conn.execute(query, phrase=ar_phrase, reply=ar_reply)
+													send_str = "Phrase \"%s\" added, with reply \"%s\" and level %d." % (ar_phrase, ar_reply, ar_level	)
+												else:
+													send_str = "No \".disconnect\" or \"/disconnect\" variants allowed."
+									else:
+										query = text("SELECT COUNT(*) FROM `%s` WHERE `phrase` = :phrase AND `reply` = :reply" % (self.autoreply_display_id))
+										if result_to_dict(self.conn.execute(query, phrase=ar_phrase, reply=ar_reply))[0]["COUNT(*)"] > 0:
+											send_str = "%s is already an autoreply phrase." % (ar_pair[0])
+										else:
+											if not disconnect_cmd(ar_reply):
+												query = text("INSERT INTO `%s` (`phrase`, `reply`, `level`) VALUES (:phrase, :reply, %d)" % (self.autoreply_display_id, 3))
+												self.conn.execute(query, phrase=ar_phrase, reply=ar_reply)
+												send_str = "Phrase \"%s\" added, with reply \"%s\"." % (ar_phrase, ar_reply)
+											else:
+												send_str = "No \".disconnect\" or \"/disconnect\" variants allowed."
 								else:
 									#incorrectly formatted, display usage
 									send_str = "Usage: \"!autoreply add <phrase>:<reply>\"." 
@@ -2453,40 +2468,47 @@ class TwitchBot(irc.IRCClient, object):
 							phrase_index = msg.index(row["phrase"])
 							#if msg did contain the autoreply phrase
 							reply = row["reply"]
-							for word in reply.split():
-								if word in self.reply_args_arr:
-									if word == "{*USER*}":
-										reply = reply.replace("{*USER*}", user)
-									elif word == "{*TO_USER*}":
-										to_user_part = msg[phrase_index+len(ar_pair[0]):len(msg)]#all the elements after the autoreply
-										reply_to_user = to_user_part.split()[0]#the first word after the autoreply, should be the to user
-										reply = reply.replace("{*TO_USER*}", str(reply_to_user))
-									elif word == "{*GAME*}":
-										game = result_to_dict(self.conn.execute("SELECT `game` FROM game LIMIT 1"))
-										reply = reply.replace("{*GAME*}", game)
-									elif word == "{*STATUS*}":
-										title = result_to_dict(self.conn.execute("SELECT `title` FROM title LIMIT 1"))
-										reply = reply.replace("{*STATUS*}", title)
-									elif word == "{*TOPIC*}":
-										topic = result_to_dict(self.conn.execute("SELECT `topic` FROM topic LIMIT 1"))
-										reply = reply.replace("{*TOPIC*}", topic)
-									elif word == "{*VIEWERS*}":
-										viewer_count = get_raw_general_stats(channel_parsed, 'viewers')
-										reply = reply.replace("{*VIEWERS*}", str(viewer_count))
-									elif word == "{*CHATTERS*}":
-										chatter_count = get_raw_general_stats(channel_parsed, 'chatters')
-										reply = reply.replace("{*CHATTERS*}", str(chatter_count))
-									elif word == "{*VIEWS*}":
-										view_count = get_raw_general_stats(channel_parsed, 'views')
-										reply = reply.replace("{*VIEWS*}", str(view_count))
-									elif word == "{*FOLLOWERS*}":
-										follower_count = get_raw_general_stats(channel_parsed, 'followers')
-										reply = reply.replace("{*FOLLOWERS*}", str(follower_count))
-							if in_front("/w", reply) or in_front(".w", reply):
-								whisper_response(reply)
-							else:
-								self.write(reply)
-							return False
+							level = row["level"]
+							user_level = get_user_level(self, user, channel_parsed, user_type)
+							if user_level <= level:
+								for word in reply.split():
+									if word in self.reply_args_arr:
+										if word == "{*USER*}":
+											reply = reply.replace("{*USER*}", user)
+										elif word == "{*TO_USER*}":
+											to_user_part = msg[phrase_index+len(ar_pair[0]):len(msg)]#all the elements after the autoreply
+											reply_to_user = to_user_part.split()[0]#the first word after the autoreply, should be the to user
+											reply = reply.replace("{*TO_USER*}", str(reply_to_user))
+										elif word == "{*GAME*}":
+											game = result_to_dict(self.conn.execute("SELECT `game` FROM game LIMIT 1"))
+											reply = reply.replace("{*GAME*}", game)
+										elif word == "{*STATUS*}":
+											title = result_to_dict(self.conn.execute("SELECT `title` FROM title LIMIT 1"))
+											reply = reply.replace("{*STATUS*}", title)
+										elif word == "{*TOPIC*}":
+											topic = result_to_dict(self.conn.execute("SELECT `topic` FROM topic LIMIT 1"))
+											reply = reply.replace("{*TOPIC*}", topic)
+										elif word == "{*VIEWERS*}":
+											viewer_count = get_raw_general_stats(channel_parsed, 'viewers')
+											reply = reply.replace("{*VIEWERS*}", str(viewer_count))
+										elif word == "{*CHATTERS*}":
+											chatter_count = get_raw_general_stats(channel_parsed, 'chatters')
+											reply = reply.replace("{*CHATTERS*}", str(chatter_count))
+										elif word == "{*VIEWS*}":
+											view_count = get_raw_general_stats(channel_parsed, 'views')
+											reply = reply.replace("{*VIEWS*}", str(view_count))
+										elif word == "{*FOLLOWERS*}":
+											follower_count = get_raw_general_stats(channel_parsed, 'followers')
+											reply = reply.replace("{*FOLLOWERS*}", str(follower_count))
+								if in_front("/w", reply) or in_front(".w", reply):
+									whisper_response(reply)
+								else:
+									self.write(reply)
+								return False
+							'''else:
+								send_str = "You don't have the correct permissions to use this autoreply." 
+								whisper(self, user, send_str)
+								return'''
 						except:
 							#msg did not contain the autoreply
 							pass
@@ -2513,6 +2535,7 @@ class TwitchBot(irc.IRCClient, object):
 		set_viewers_str = "!set viewers"
 		set_chatters_str = "!set chatters"
 		set_followers_str = "!set followers"
+		set_loops_str = "!set loops"
 		set_set_str = "!set set"
 		
 		set_antispam_str = "!set antispam"
@@ -2603,6 +2626,10 @@ class TwitchBot(irc.IRCClient, object):
 					elif in_front(set_stats_str, msg):
 						set_value(self, self.stats_display_id, msg_arr)
 					
+					#loops
+					elif in_front(set_loops_str, msg):
+						set_value(self, self.loops_display_id, msg_arr)
+
 					#set
 					elif in_front(set_set_str, msg):
 						set_value(self, self.set_display_id, msg_arr)	
@@ -3752,38 +3779,70 @@ class TwitchBot(irc.IRCClient, object):
 				if in_front(cmd_add_str, msg):
 					if has_level(self, user, channel_parsed, user_type, self.command_display_id):
 						msg_arr = msg.split(" ", 2)
-						if len(msg_arr) == 3:
+						if len(msg_arr) >= 3:
 							if ":" in msg_arr[2] and in_front("!", msg_arr[2]):
 								cmd_msg_arr = msg_arr[2].split(":", 1)
 								if len(cmd_msg_arr) == 2:
 									cmd_phrase = cmd_msg_arr[0].rstrip().lstrip()
 									cmd_reply = cmd_msg_arr[1].rstrip().lstrip()
-									if cmd_phrase in self.default_cmd_arr:#dont add something that is already a default command
-										send_str = "%s is already a default command." % (cmd_phrase)
+									if is_num(cmd_reply[-1:]):
+										cmd_level = cmd_reply[-1:]#get level
+										cmd_reply = cmd_reply[:-1]#everything but last letter
 									else:
-										query = text("SELECT COUNT(*) FROM `%s` WHERE `command` = :command AND `reply` = :reply" % (self.command_display_id))
-										if result_to_dict(self.conn.execute(query, command=cmd_phrase, reply=cmd_reply))[0]["COUNT(*)"] > 0:
-											send_str = "%s is already a custom command." % (cmd_phrase)
+										cmd_level = False
+
+									if cmd_level:
+										if not check_int(cmd_level):
+											send_str = "Level requirement must be an integer." 
+											whisper(self, user, send_str)
+											return	
 										else:
-											if not disconnect_cmd(cmd_reply):
-												query = text("INSERT INTO `%s` (`command`, `reply`) VALUES (:phrase, :reply)" % self.command_display_id)
-												self.conn.execute(query, phrase=cmd_phrase, reply=cmd_reply)
-												send_str = "Command \"%s\" added, with reply \"%s\"." % (cmd_phrase, cmd_reply)
+											#valid level input
+											cmd_level = int(cmd_level)
+											if cmd_level < 1 or cmd_level > 4:
+												send_str = "Level requirement must be between 1 and 4." 
+												whisper(self, user, send_str)
+												return	
+											if cmd_phrase in self.default_cmd_arr:#dont add something that is already a default command
+												send_str = "%s is already a default command." % (cmd_phrase)
 											else:
-												send_str = "No \".disconnect\" or \"/disconnect\" variants allowed."
+												query = text("SELECT COUNT(*) FROM `%s` WHERE `command` = :command AND `reply` = :reply" % (self.command_display_id))
+												if result_to_dict(self.conn.execute(query, command=cmd_phrase, reply=cmd_reply))[0]["COUNT(*)"] > 0:
+													send_str = "%s is already a custom command." % (cmd_phrase)
+												else:
+													if not disconnect_cmd(cmd_reply):
+														query = text("INSERT INTO `%s` (`command`, `reply`, `level`) VALUES (:phrase, :reply, %d)" % (self.command_display_id, cmd_level))
+														self.conn.execute(query, phrase=cmd_phrase, reply=cmd_reply)
+														send_str = "Command \"%s\" added, with reply \"%s\" and level requirement %d." % (cmd_phrase, cmd_reply, cmd_level)
+													else:
+														send_str = "No \".disconnect\" or \"/disconnect\" variants allowed."
+									else:
+										if cmd_phrase in self.default_cmd_arr:#dont add something that is already a default command
+											send_str = "%s is already a default command." % (cmd_phrase)
+										else:
+											query = text("SELECT COUNT(*) FROM `%s` WHERE `command` = :command AND `reply` = :reply" % (self.command_display_id))
+											if result_to_dict(self.conn.execute(query, command=cmd_phrase, reply=cmd_reply))[0]["COUNT(*)"] > 0:
+												send_str = "%s is already a custom command." % (cmd_phrase)
+											else:
+												if not disconnect_cmd(cmd_reply):
+													query = text("INSERT INTO `%s` (`command`, `reply`, `level`) VALUES (:phrase, :reply, %d)" % (self.command_display_id, 3))#default to mods 
+													self.conn.execute(query, phrase=cmd_phrase, reply=cmd_reply)
+													send_str = "Command \"%s\" added, with reply \"%s\"." % (cmd_phrase, cmd_reply)
+												else:
+													send_str = "No \".disconnect\" or \"/disconnect\" variants allowed."
 								else:
 									#incorrectly formatted, display usage
-									send_str = "Usage: \"!command add !<command>:<reply>\"." 
+									send_str = "Usage: \"!command add !<command>:<reply> <level>\"." 
 									whisper(self, user, send_str)
 									return	
 							else:
 								#incorrectly formatted, display usage
-								send_str = "Usage: \"!command add !<command>:<reply>\"." 
+								send_str = "Usage: \"!command add !<command>:<reply> <level>\"." 
 								whisper(self, user, send_str)
 								return
 						else:
 							#incorrectly formatted, display usage
-							send_str = "Usage: \"!command add !<command>:<reply>\"."
+							send_str = "Usage: \"!command add !<command>:<reply> <level>\"."
 							whisper(self, user, send_str)
 							return
 					else:
@@ -3868,8 +3927,10 @@ class TwitchBot(irc.IRCClient, object):
 						try:
 							cmd_index = msg.index(row["command"])
 							#if msg did contain the custom command
-							if has_level(self, user, channel_parsed, user_type, self.command_display_id):
-								reply = row["reply"]
+							reply = row["reply"]
+							level = row["level"]
+							user_level = get_user_level(self, user, channel_parsed, user_type)
+							if user_level <= level:
 								for word in reply.split():
 									if word in self.reply_args_arr:
 										if word == "{*USER*}":
@@ -3899,15 +3960,15 @@ class TwitchBot(irc.IRCClient, object):
 										elif word == "{*FOLLOWERS*}":
 											follower_count = get_raw_general_stats(channel_parsed, 'followers')
 											reply = reply.replace("{*FOLLOWERS*}", str(follower_count))
-							else:
-								send_str = "You don't have the correct permissions to use custom commands." 
-								whisper(self, user, send_str)
-								return
-							if in_front("/w", reply) or in_front(".w", reply):
-								whisper_response(reply)
-							else:
-								self.write(reply)
-							return False
+								'''else:
+									send_str = "You don't have the correct permissions to use this custom command." 
+									whisper(self, user, send_str)
+									return'''
+								if in_front("/w", reply) or in_front(".w", reply):
+									whisper_response(reply)
+								else:
+									self.write(reply)
+								return False
 						except:
 							#msg did not contain the autoreply
 							pass
@@ -4006,7 +4067,6 @@ class TwitchBot(irc.IRCClient, object):
 					self.write(repeat_row[2])
 				except:
 					pass
-				self.main_parse(self.nickname, repeat_row[2], 'mod')
 	
 	def countdown_check(self):
 		if get_status(self, self.countdown_display_id):
@@ -4021,7 +4081,6 @@ class TwitchBot(irc.IRCClient, object):
 					self.write(countdown_row["command"])
 				except:
 					pass
-				self.main_parse(self.nickname, countdown_row["command"], 'mod')
 									
 	def follower_check(self):
 		self.follower_arr, new_follower_arr = get_new_followers(self.follower_arr, self.channel_parsed, self)
@@ -5034,13 +5093,18 @@ class TwitchBot(irc.IRCClient, object):
 	def write(self, msg):
 		'''Send message to channel and log it'''
 		if "/mods" in msg:
-			self.msg(self.channel, "/mods")
+			original_msg = msg
+			msg = "/mods"
+			self.msg(self.channel, msg)
 			if not self.whisper_mods_thread:#if we aren't looking for the msg for the get whisper mods msg function
-				thread.start_new_thread(get_mods_msg, (self, msg))
+				thread.start_new_thread(get_mods_msg, (self, original_msg))
 
 		else:	
 			self.msg(self.channel, msg.encode("utf-8"))
 			logging.info("{}: {}".format(self.nickname, msg))
+
+		if get_status(self, "loops"):
+			self.main_parse(nickname, msg, '')#parse our own if that feature is on
 		
 class BotFactory(protocol.ClientFactory, object):
 	wait_time = 1
