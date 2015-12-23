@@ -12,6 +12,8 @@ SEPERATE IDEAS
 	ascii art line by line
 	have a small channel come alive with bots
 	
+allow users to program question responses like ALICE? <-- interesting idea for a solo channel
+
 GUI
 more channel functionality
 create own commands functionality
@@ -31,45 +33,35 @@ checkbox to enable/disable errors in chat, such as usage/have to be mod
 checkbox for whispers for warning messages ie excessive use of caps warning/etc?
 ban use of some emotes or all emotes <-checkbox gui option
 expiration dates for repeat timers
+!x delete 21, 1, 5 <--- multiple deleting possibility, better put this in gui since we can't delete things with commas in it if this is in the chat.
+log/dict/array of recent commands? <-doubt this would actually help with an undo command
+	do similar thing to moobot, have a chatbox of the commands said and run, without other misc messages
+extra analytics for messages and emotes and shiznizzle(think past me meant in the gui)
+default starting amount of points-change in gui
+add default point value in gui
 
 SERVER:
-how to keep permanently on, desktop is best current option, other than some form of cloud hosting/streamer hosting<-- see stackoverflow response
-
+see stackoverflow response
+link our access_token html file and this file 
+	this is going to be completely different most likely when we do this on a server, so for now we are just doing a text file edit
 multi channel processing for comparison stats?
 famous person has joined chat
 donations <-if this isnt already done very well
-hours til next strim? <--countdown command
+hours til next strim? <--countdown command?
 score of current game/tourney/bo3/etc
 song functionality
 sub notifications
-raffle -  expiration timer? <-- we could let the countdowns do this or gui
-social media info
-allow users to program question responses like ALICE? <-- interesting idea for a solo channel
+social media info?
 overall and per day -time user has watched stream
 	other user tracking stuff
 overrall and per day -messages of user, high score, etc
-check to make sure x!= '' is present in all the things
-log/dict/array of recent commands? <-doubt this would actually help with an undo command
-	do similar thing to moobot, have a chatbox of the commands said and run, without other misc messages
-different levels of authority? 
-tecsbot moderator group?
 figure out what to do with the other spamerino things
 excludes for "regulars" and subs
 offtime - time stream has been offline
 the minimum number of symbols should be disabled by default
-link our access_token html file and this file 
-	this is going to be completely different most likely when we do this on a server, so for now we are just doing a text file edit
 need to make friends with a twitch partner
 need to have command to check if user is subscribed to channel 
 	!subscribed /!subbed <user>
-just a note: better to try and open file and catch exception than to check if isfile
-the bad file descriptor is apparently related to the self. variables<--so you know why it's happening if it does happen again
-make it so capitalization doesnt matter on several things(i.e. autoreply) option?
-!x delete 21, 1, 5 <--- multiple deleting possibility
-analytics for messages and emotes and shiznizzle(think past me meant in the gui)
-1 second between requests is recommended
-replace as many api requests as possible
-!clever <user> to troll user
 How to get bot in channel:
 	1. User goes to website and gives oauth, so that we know it's them
 	2. They type !join in their channel and then mod the bot
@@ -79,17 +71,14 @@ https://apis.rtainc.co/twitchbot/status?user=Darkelement75 custom api link
 execute commands with streamer capabilities
 http://deepbot.deep.sg/wiki/Bot+Commands
 @customapi@[api link] where customapi is a variable that represents the data on the api link, ie how nightbot has uptime api link
-use more try except/catch 
 oauth_on variable?
-!time to print current time
 remember to update the default command list, the README, the sets, and the db
 whisper mods list or whispers argument where mods can choose to have bot's responses whispered to them instead of printed
-default starting amount of points, make changeable just like all the others?
+	!whisperme
 3 main things:
 	1. Song requests - website for streamer to use that bot is hooked up to, use the gui
 	2. Database setting storage
 	3. website and gui for the bot 
-make link whitelist also look for false positives? i.e. dot com
 dont let it time out mods unless it can send messages on behalf of streamer
 	a. Allows settings input
 	b. Has connect with twitch button first
@@ -99,7 +88,13 @@ current_time = time.time() will not get fractions of a second, it will only get 
 	maybe we will make it loop every second in the future instead of 0.003, i dont fucking know i just know i dont want to 
 	do it right now
 add a general spam prevention like r9k
-what do we need to rename emote_warn to / we still need this function
+what do we need to rename emote_warn to / we still need this function for the default emotes
+
+TRASHED STUFF:
+!clever <user> to troll user
+replace as many api requests as possible
+!time to print current time
+make link whitelist also look for false positives? i.e. dot com
 """
 '''misc
  function loadEmotes() { $.getJSON("https://api.betterttv.net/emotes").done(function(data) { $emotes.text(''); parseEmotes(data.emotes); }).fail(function() { $('#emote').text("Error loading emotes.."); }); }
@@ -859,7 +854,7 @@ def point_change(self, user, points):
 		query = text("SELECT COUNT(*) FROM point_users WHERE user = :user")
 		res = result_to_dict(self.conn.execute(query, user=user))[0]["COUNT(*)"]
 		if res <= 0:
-			query = text("INSERT INTO `point_users` (`user`, `points`) VALUES (:user, 0)")
+			query = text("INSERT INTO `point_users` (`user`, `points`) VALUES (:user, %d)" % self.default_point_value)
 			self.conn.execute(query, user=user)
 		query = text("UPDATE point_users SET points = points+%d WHERE user = :user" % (points))
 		self.conn.execute(query, user=user)
@@ -870,7 +865,9 @@ def point_balance(self, user):
 	if res != []:
 		return res[0]["points"]
 	else:
-		return 0
+		query = text("INSERT INTO `point_users` (`user`, `points`) VALUES (:user, %d)" % self.default_point_value)
+		self.conn.execute(query, user=user)
+		return self.default_point_value
 	
 def result_to_dict(res):
 	return [dict(row) for row in res]
@@ -1051,6 +1048,7 @@ CREATE DATABASE IF NOT EXISTS `%s`;
 	CREATE TABLE IF NOT EXISTS `banphrase` (
 	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 	  `banphrase` varchar(500) DEFAULT NULL,
+	  `duration` BIGINT(20) NULL DEFAULT NULL,
 	  PRIMARY KEY (`index`)
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
@@ -1456,10 +1454,10 @@ class TwitchBot(irc.IRCClient, object):
 		self.level_display_id = "level"
 		self.loops_display_id = "loops"
 
-		#Raffle and Lottery
+		#Raffle and Lottery Point values
 		self.raffle_point_value = 0
 		self.lottery_point_value = 0
-		
+
 		#Initial stream data values
 		stream_data = get_json_stream(self.channel_parsed)["streams"]
 		if stream_data:
@@ -1488,6 +1486,8 @@ class TwitchBot(irc.IRCClient, object):
 		#Some defaults
 		self.default_permit_time = 30#seconds
 		self.default_permit_msg_count = 10#msgs
+		self.default_point_value = 0
+		self.default_banphrase_duration = 30#seconds
 		
 		#For the bot
 		self.time_unit_arr = ["sec", "secs", "second", "seconds", "min", "mins", "minute", "minutes", "hr", "hrs", "hour", "hours", "day", "days", "week", "weeks"]
@@ -1595,8 +1595,7 @@ class TwitchBot(irc.IRCClient, object):
 								send_str += "(%s.) %s." % (row_index+1, link_whitelist_table[row_index]["link"])
 					if not has_level(self, user, channel_parsed, user_type, self.link_whitelist_display_id):
 						whisper(self, user, send_str)		
-						return
-						
+						return		
 				elif in_front(link_whitelist_clr_str, msg):
 					if has_level(self, user, channel_parsed, user_type, self.link_whitelist_display_id):
 						clear_table(self, self.link_whitelist_display_id)
@@ -2143,7 +2142,8 @@ class TwitchBot(irc.IRCClient, object):
 				if get_status(self, self.banphrase_display_id):
 					banphrase_table = get_table(self, self.banphrase_display_id)
 					for row_index, row in enumerate(banphrase_table):
-						if row[self.banphrase_display_id] in msg:
+						if row['`banphrase`'] in msg:
+							banphrase_timeout_duration = simplify_num(row['`duration`'])
 							warn(user, msg, channel_parsed, self, "banphrase_warn", banphrase_warn_duration, banphrase_warn_cooldown, banphrase_timeout_msg, banphrase_timeout_duration)
 							return True
 							
@@ -2230,12 +2230,37 @@ class TwitchBot(irc.IRCClient, object):
 				if in_front(banphrase_add_str, msg):
 					if has_level(self, user, channel_parsed, user_type, self.banphrase_display_id): 
 						if len(msg_arr) > 2:#need to have this if statement more often
-							banphrase = msg_arr[2]
-							if has_count(self, self.banphrase_display_id, "banphrase", banphrase):
-								send_str = "%s is already a banphrase." % (banphrase)
+							banphrase = msg_arr[2].strip()
+							if is_num(banphrase[-1:]):
+								banphrase_timeout = banphrase[-1:]#get duration
+								banphrase = banphrase[:-1]#everything but last letter
 							else:
-								insert_data(self, self.banphrase_display_id, ["banphrase"], banphrase)
-								send_str = "\"%s\" added to list of banphrases." % (banphrase)
+								banphrase_timeout = False
+
+							if banphrase_timeout:
+								if not is_num(banphrase_timeout):
+									send_str = "Banphrase timeout duration must be a number." 
+									whisper(self, user, send_str)
+									return	
+								else:
+									#valid timeout input
+									if banphrase_timeout < 0:
+										send_str = "Banphrase timeout duration must be greater than 0." 
+										whisper(self, user, send_str)
+										return	
+									if has_count(self, self.banphrase_display_id, "banphrase", banphrase):
+										send_str = "%s is already a banphrase." % (banphrase)
+									else:
+										query = text("INSERT INTO `%s` (`banphrase`, `duration`) VALUES (:banphrase, %d)" % (self.banphrase_display_id, banphrase_timeout))
+										self.conn.execute(query, banphrase=banphrase)
+										send_str = "\"%s\" added to list of banphrases with timeout duration %d." % (banphrase, banphrase_timeout)
+							else:
+								if has_count(self, self.banphrase_display_id, "banphrase", banphrase):
+									send_str = "%s is already a banphrase." % (banphrase)
+								else:
+									query = text("INSERT INTO `%s` (`banphrase`, `duration`) VALUES (:banphrase, %d)" % (self.banphrase_display_id, self.default_banphrase_timeout))
+									self.conn.execute(query, banphrase=banphrase)
+									send_str = "\"%s\" added to list of banphrases." % (banphrase)
 						else:
 							send_str = "Usage: \"!banphrase add <banphrase>\"" 
 							whisper(self, user, send_str)
