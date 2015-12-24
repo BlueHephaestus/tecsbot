@@ -89,6 +89,8 @@ current_time = time.time() will not get fractions of a second, it will only get 
 	do it right now
 add a general spam prevention like r9k
 what do we need to rename emote_warn to / we still need this function for the default emotes
+!google <search query>
+variable storage stuff
 
 TRASHED STUFF:
 !clever <user> to troll user
@@ -129,6 +131,7 @@ IOError: [Errno socket error] [Errno 11004] getaddrinfo failed
 '''
 import thread, threading #imports module allowing timing functions
 import sys, operator, time, urllib, json, math, os, random, unicodedata, requests, select
+from py2casefold import casefold
 from datetime import datetime, timedelta
 import re#regex
 import string#string constants
@@ -666,7 +669,8 @@ def symbol_count(msg):
 	return msg_symbol_count		
 
 def normalize_caseless(str):
-	return unicodedata.normalize("NFKD", str.casefold())
+        str = casefold(str.decode("utf-8"))
+        return unicodedata.normalize("NFKD", str)
 
 def in_front(str, msg):
 	if normalize_caseless(str) in normalize_caseless(msg[:len(str)+1]):
@@ -912,9 +916,13 @@ def has_count(self, table, column, value):
 def get_status(self, display_id):
 	query = text("SELECT `feature_status` FROM main WHERE `display_id` = :display_id")
 	status = result_to_dict(self.conn.execute(query, display_id=display_id))
-	if status[0]["feature_status"] == 1:
-		return True
-	else:
+	#print status[0]["feature_status"].encode("utf-8")
+	try:
+		if ord(status[0]["feature_status"]) == 1:
+			return True
+		else:
+			return False
+	except:
 		return False
 		
 def set_status(self, feature, status):
@@ -1041,14 +1049,14 @@ CREATE DATABASE IF NOT EXISTS `%s`;
 	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 	  `phrase` varchar(500) DEFAULT NULL,
 	  `reply` varchar(500) DEFAULT NULL,
-	  `level` TINYINT(4) NULL DEFAULT NULL,
+	  `level` TINYINT(1) UNSIGNED NULL DEFAULT NULL,
 	  PRIMARY KEY (`index`)
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
 	CREATE TABLE IF NOT EXISTS `banphrase` (
 	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 	  `banphrase` varchar(500) DEFAULT NULL,
-	  `duration` BIGINT(20) NULL DEFAULT NULL,
+	  `duration` double UNSIGNED NULL DEFAULT NULL,
 	  PRIMARY KEY (`index`)
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
@@ -1068,8 +1076,6 @@ CREATE DATABASE IF NOT EXISTS `%s`;
 
 	CREATE TABLE IF NOT EXISTS `chatters` (
 	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-	  `command` varchar(500) DEFAULT NULL,
-	  `reply` varchar(500) DEFAULT NULL,
 	  `user` varchar(500) DEFAULT NULL,
 	  PRIMARY KEY (`index`)
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
@@ -1078,7 +1084,7 @@ CREATE DATABASE IF NOT EXISTS `%s`;
 	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 	  `command` varchar(500) DEFAULT NULL,
 	  `reply` varchar(500) DEFAULT NULL,
-	  `level` TINYINT(4) NULL DEFAULT NULL,
+	  `level` TINYINT(1) unsigned NULL DEFAULT NULL,
 	  PRIMARY KEY (`index`)
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
@@ -1089,9 +1095,9 @@ CREATE DATABASE IF NOT EXISTS `%s`;
 		
 	CREATE TABLE IF NOT EXISTS `countdown` (
 	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-	  `set_time` varchar(500) DEFAULT NULL,
+	  `set_time` DOUBLE unsigned NULL DEFAULT NULL,
 	  `command` varchar(500) DEFAULT NULL,
-	  `duration` varchar(500) DEFAULT NULL,
+	  `duration` DOUBLE unsigned NULL DEFAULT NULL,
 	  PRIMARY KEY (`index`)
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
@@ -1109,14 +1115,14 @@ CREATE DATABASE IF NOT EXISTS `%s`;
 	
 	CREATE TABLE IF NOT EXISTS `emote_warn` (
 	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-	  `set_time` double NOT NULL,
+	  `set_time` double unsigned NOT NULL,
 	  `user` varchar(500) DEFAULT NULL,
 	  PRIMARY KEY (`index`)
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
 	CREATE TABLE IF NOT EXISTS `fake_purge_warn` (
 	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-	  `set_time` double NOT NULL,
+	  `set_time` double unsigned NOT NULL,
 	  `user` varchar(500) DEFAULT NULL,
 	  PRIMARY KEY (`index`)
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
@@ -1148,21 +1154,21 @@ CREATE DATABASE IF NOT EXISTS `%s`;
 
 	CREATE TABLE IF NOT EXISTS `link_whitelist_warn` (
 	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-	  `set_time` double NOT NULL,
+	  `set_time` double unsigned NOT NULL,
 	  `user` varchar(500) DEFAULT NULL,
 	  PRIMARY KEY (`index`)
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
 	CREATE TABLE IF NOT EXISTS `long_msg_warn` (
 	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-	  `set_time` double NOT NULL,
+	  `set_time` double unsigned NOT NULL,
 	  `user` varchar(500) DEFAULT NULL,
 	  PRIMARY KEY (`index`)
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
 	CREATE TABLE IF NOT EXISTS `long_word_warn` (
 	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-	  `set_time` double NOT NULL,
+	  `set_time` double unsigned NOT NULL,
 	  `user` varchar(500) DEFAULT NULL,
 	  PRIMARY KEY (`index`)
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
@@ -1176,8 +1182,8 @@ CREATE DATABASE IF NOT EXISTS `%s`;
 	CREATE TABLE IF NOT EXISTS `main` (
 	  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 	  `display_id` varchar(500) DEFAULT NULL,
-	  `feature_status` tinyint(4) DEFAULT NULL,
-	  `feature_level` tinyint(4) DEFAULT NULL,
+	  `feature_status` bit(1) UNSIGNED DEFAULT NULL,
+	  `feature_level` tinyint(1) UNSIGNED DEFAULT NULL,
 	  PRIMARY KEY (`id`)
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 	
@@ -1234,7 +1240,7 @@ CREATE DATABASE IF NOT EXISTS `%s`;
 
 	CREATE TABLE IF NOT EXISTS `me_warn` (
 	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-	  `set_time` double NOT NULL,
+	  `set_time` double unsigned NOT NULL,
 	  `user` varchar(500) DEFAULT NULL,
 	  PRIMARY KEY (`index`)
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
@@ -1257,10 +1263,19 @@ CREATE DATABASE IF NOT EXISTS `%s`;
 	  PRIMARY KEY (`index`)
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
+	CREATE TABLE IF NOT EXISTS `permit` (
+	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+	  `set_time` varchar(500) unsigned DEFAULT NULL,
+	  `user` varchar(500) DEFAULT NULL,
+	  `duration` double UNSIGNED DEFAULT NULL,
+	  `type` ENUM('message', 'time', 'permanent') DEFAULT NULL,
+	  PRIMARY KEY (`index`)
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
 	CREATE TABLE IF NOT EXISTS `point_users` (
 	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 	  `user` varchar(500) DEFAULT NULL,
-	  `points` double DEFAULT NULL,
+	  `points` double unsigned DEFAULT NULL,
 	  PRIMARY KEY (`index`)
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
@@ -1272,9 +1287,9 @@ CREATE DATABASE IF NOT EXISTS `%s`;
 
 	CREATE TABLE IF NOT EXISTS `repeat` (
 	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-	  `set_time` double DEFAULT NULL,
+	  `set_time` double UNSIGNED DEFAULT NULL,
 	  `phrase` varchar(500) DEFAULT NULL,
-	  `interval` double DEFAULT NULL,
+	  `interval` double UNSIGNED DEFAULT NULL,
 	  PRIMARY KEY (`index`)
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
@@ -1286,30 +1301,21 @@ CREATE DATABASE IF NOT EXISTS `%s`;
 
 	CREATE TABLE IF NOT EXISTS `skincode_warn` (
 	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-	  `set_time` double NOT NULL,
+	  `set_time` double UNSIGNED NOT NULL,
 	  `user` varchar(500) DEFAULT NULL,
-	  PRIMARY KEY (`index`)
-	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
-
-	CREATE TABLE IF NOT EXISTS `permit` (
-	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-	  `set_time` varchar(500) DEFAULT NULL,
-	  `user` varchar(500) DEFAULT NULL,
-	  `duration` varchar(500) DEFAULT NULL,
-	  `type` varchar(500) DEFAULT NULL,
 	  PRIMARY KEY (`index`)
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
 	CREATE TABLE IF NOT EXISTS `spam_warn` (
 	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-	  `set_time` double NOT NULL,
+	  `set_time` double UNSIGNED NOT NULL,
 	  `user` varchar(500) DEFAULT NULL,
 	  PRIMARY KEY (`index`)
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
 	CREATE TABLE IF NOT EXISTS `symbol_warn` (
 	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-	  `set_time` double NOT NULL,
+	  `set_time` double UNSIGNED NOT NULL,
 	  `user` varchar(500) DEFAULT NULL,
 	  PRIMARY KEY (`index`)
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
@@ -1341,7 +1347,7 @@ CREATE DATABASE IF NOT EXISTS `%s`;
 	CREATE TABLE IF NOT EXISTS `poll` (
 	  `index` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 	  `option` varchar(500) DEFAULT NULL,
-	  `votes` varchar(500) DEFAULT NULL,
+	  `votes` bigint(20) UNSIGNED DEFAULT NULL,
 	  `users` varchar(500) DEFAULT NULL,
 	  PRIMARY KEY (`index`)
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;
@@ -1487,7 +1493,7 @@ class TwitchBot(irc.IRCClient, object):
 		self.default_permit_time = 30#seconds
 		self.default_permit_msg_count = 10#msgs
 		self.default_point_value = 0
-		self.default_banphrase_duration = 30#seconds
+		self.default_banphrase_timeout = 30#seconds
 		
 		#For the bot
 		self.time_unit_arr = ["sec", "secs", "second", "seconds", "min", "mins", "minute", "minutes", "hr", "hrs", "hour", "hours", "day", "days", "week", "weeks"]
@@ -2142,8 +2148,8 @@ class TwitchBot(irc.IRCClient, object):
 				if get_status(self, self.banphrase_display_id):
 					banphrase_table = get_table(self, self.banphrase_display_id)
 					for row_index, row in enumerate(banphrase_table):
-						if row['`banphrase`'] in msg:
-							banphrase_timeout_duration = simplify_num(row['`duration`'])
+						if row['banphrase'] in msg:
+							banphrase_timeout_duration = simplify_num(row['duration'])
 							warn(user, msg, channel_parsed, self, "banphrase_warn", banphrase_warn_duration, banphrase_warn_cooldown, banphrase_timeout_msg, banphrase_timeout_duration)
 							return True
 							
@@ -2225,18 +2231,26 @@ class TwitchBot(irc.IRCClient, object):
 		banphrase_clr_str = "!banphrase clear"
 		
 		if get_status(self, self.banphrase_display_id):
-			msg_arr = msg.split(" ", 2)
+			msg_arr = msg.split(" ")
 			if in_front(banphrase_str, msg):
 				if in_front(banphrase_add_str, msg):
 					if has_level(self, user, channel_parsed, user_type, self.banphrase_display_id): 
 						if len(msg_arr) > 2:#need to have this if statement more often
-							banphrase = msg_arr[2].strip()
-							if is_num(banphrase[-1:]):
-								banphrase_timeout = banphrase[-1:]#get duration
-								banphrase = banphrase[:-1]#everything but last letter
-							else:
-								banphrase_timeout = False
-
+							del msg_arr[0:2]#remove command specifiers
+							banphrase = ''
+							for phrase_part in range(len(msg_arr)):
+								if phrase_part == len(msg_arr)-2 and is_num(msg_arr[phrase_part]) and msg_arr[phrase_part+1] in self.time_unit_arr:#if unit of time specified
+									banphrase = banphrase.rstrip()
+									banphrase_timeout = simplify_num(msg_arr[phrase_part])
+									interval_unit = msg_arr[phrase_part+1]
+									banphrase_timeout = convert_to_sec(banphrase_timeout, interval_unit, self)
+									break
+								elif phrase_part == len(msg_arr)-1 and is_num(phrase_part):#if no unit of time specified, seconds
+									banphrase = banphrase.rstrip()#get rid of trailing space
+									banphrase_timeout = msg_arr[phrase_part]
+								else:
+									banphrase += msg_arr[phrase_part] + " "
+							print banphrase_timeout
 							if banphrase_timeout:
 								if not is_num(banphrase_timeout):
 									send_str = "Banphrase timeout duration must be a number." 
@@ -2244,6 +2258,7 @@ class TwitchBot(irc.IRCClient, object):
 									return	
 								else:
 									#valid timeout input
+									banphrase_timeout = simplify_num(banphrase_timeout)
 									if banphrase_timeout < 0:
 										send_str = "Banphrase timeout duration must be greater than 0." 
 										whisper(self, user, send_str)
@@ -2253,7 +2268,7 @@ class TwitchBot(irc.IRCClient, object):
 									else:
 										query = text("INSERT INTO `%s` (`banphrase`, `duration`) VALUES (:banphrase, %d)" % (self.banphrase_display_id, banphrase_timeout))
 										self.conn.execute(query, banphrase=banphrase)
-										send_str = "\"%s\" added to list of banphrases with timeout duration %d." % (banphrase, banphrase_timeout)
+										send_str = "\"%s\" added to list of banphrases with timeout duration %d." % (banphrase, parse_sec_condensed(banphrase_timeout))
 							else:
 								if has_count(self, self.banphrase_display_id, "banphrase", banphrase):
 									send_str = "%s is already a banphrase." % (banphrase)
@@ -2304,10 +2319,10 @@ class TwitchBot(irc.IRCClient, object):
 						for row_index, row in enumerate(banphrase_table):
 							if (row_index != len(banphrase_table) -1):
 								#every element but last one
-								send_str += "(%s.) %s, " % (row_index+1, row["banphrase"])
+								send_str += "(%s.) %s : %s, " % (row_index+1, row["banphrase"], parse_sec_condensed(row["duration"]))
 							else:
 								#last element in arr
-								send_str += "(%s.) %s." % (row_index+1, row["banphrase"])
+								send_str += "(%s.) %s : %s." % (row_index+1, row["banphrase"], parse_sec_condensed(row["duration"]))
 					if not has_level(self, user, channel_parsed, user_type, self.banphrase_display_id):
 						whisper(self, user, send_str)		
 						return		
@@ -3694,7 +3709,7 @@ class TwitchBot(irc.IRCClient, object):
 							del msg_arr[0:2]#remove command specifiers
 							repeat_cmd = ''
 							for cmd_part in range(len(msg_arr)):
-								if cmd_part == len(msg_arr)-2 and msg_arr[cmd_part+1] in self.time_unit_arr:#if unit of time specified
+								if cmd_part == len(msg_arr)-2 and is_num(msg_arr[cmd_part]) and msg_arr[cmd_part+1] in self.time_unit_arr:#if unit of time specified
 									repeat_cmd = repeat_cmd.rstrip()
 									repeat_interval = simplify_num(msg_arr[cmd_part])
 									interval_unit = msg_arr[cmd_part+1]
@@ -4822,6 +4837,10 @@ class TwitchBot(irc.IRCClient, object):
 						if is_num(feature_arr[-1]):#if last element in the array is a number then assign the feature to everything before it and assign the level to the number
 							feature = feature_arr[:-1].strip()
 							level = int(feature_arr[-1])
+							if level < 1 or level > 4:
+								send_str = "Level requirement must be between 1 and 4." 
+								whisper(user, send_str)
+								return 
 							if "!" in feature[:1]:
 								feature = feature[1:]
 							if feature == "subs":
